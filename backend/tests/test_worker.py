@@ -1,16 +1,24 @@
 import asyncio
 import shutil
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app import queue, repository
+from app import gemini_client, queue, repository
 from app.parsers.base import NO_TEXT_NOTE
 from app.schemas import ParserType
 from app.storage import upload_path
 from app.worker.main import Consumer, process_message
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def fake_gemini(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    mock = AsyncMock(return_value="## Summary\n- point")
+    monkeypatch.setattr(gemini_client, "generate", mock)
+    return mock
 
 
 async def _submit(fake_redis, fixture: str) -> str:
@@ -33,7 +41,7 @@ async def _run_once(fake_redis) -> None:
         await process_message(fake_redis, entry_id, fields)
 
 
-async def test_end_to_end(fake_redis) -> None:
+async def test_end_to_end(fake_redis, fake_gemini) -> None:
     document_id = await _submit(fake_redis, "text.pdf")
     pubsub = fake_redis.pubsub()
     await pubsub.subscribe(repository.events_channel("b1"))
@@ -41,7 +49,8 @@ async def test_end_to_end(fake_redis) -> None:
 
     doc = await repository.get_document(fake_redis, document_id)
     assert doc["status"] == "completed"
-    assert doc["summary_status"] == "skipped"
+    assert doc["summary_status"] == "completed"
+    assert doc["summary"] == "## Summary\n- point"
     assert doc["page_count"] == 2
     assert doc["error"] is None
     assert [p["content"] for p in doc["pages"]] == ["Hello page one", "Second page text"]
@@ -118,3 +127,26 @@ async def test_consumer_loop_processes_and_stops(fake_redis) -> None:
     consumer.stop.set()
     await asyncio.wait_for(task, timeout=10)
     assert doc["status"] == "completed"
+
+
+async def test_summary_failure_keeps_document_completed(fake_redis, fake_gemini) -> None:
+    fake_gemini.side_effect = RuntimeError("boom")
+    document_id = await _submit(fake_redis, "text.pdf")
+    await _run_once(fake_redis)
+
+    doc = await repository.get_document(fake_redis, document_id)
+    assert doc["status"] == "completed"
+    assert doc["summary_status"] == "failed"
+    assert "boom" in doc["error"]
+    assert doc["summary"] is None
+    assert len(doc["pages"]) == 2
+
+
+async def test_empty_text_skips_summary(fake_redis, fake_gemini) -> None:
+    document_id = await _submit(fake_redis, "blank.pdf")
+    await _run_once(fake_redis)
+
+    doc = await repository.get_document(fake_redis, document_id)
+    assert doc["status"] == "completed"
+    assert doc["summary_status"] == "skipped"
+    fake_gemini.assert_not_called()

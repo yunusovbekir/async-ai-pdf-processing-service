@@ -14,9 +14,10 @@ from pathlib import Path
 
 import redis.asyncio as redis
 
+from app import summarizer
 from app.config import get_settings
 from app.logging_config import setup_logging
-from app.parsers.base import NO_TEXT_NOTE, ParserError, get_parser
+from app.parsers.base import NO_TEXT_NOTE, PageContent, ParserError, get_parser
 from app.queue import DEAD_STREAM, GROUP, STREAM, enqueue, ensure_group
 from app.redis_client import close_redis, get_redis
 from app.repository import doc_key, pages_key, update_status
@@ -29,9 +30,32 @@ READY_FILE = Path("/tmp/worker-ready")  # probed by the compose healthcheck
 BLOCK_MS = 5000
 
 
-async def summarize(client: redis.Redis, document_id: str) -> None:
-    """Summary step; hook for the Gemini summarizer (skipped for now)."""
-    await client.hset(doc_key(document_id), "summary_status", SummaryStatus.skipped)
+async def _summarize(client: redis.Redis, document_id: str, pages: list[PageContent]) -> None:
+    """Summarize parsed pages and record the outcome on the document.
+
+    A summary failure never fails the document: the pages are kept and the error is stored.
+    Documents without text are marked `skipped` without calling the API.
+
+    Args:
+        client: Redis client.
+        document_id: Document to summarize.
+        pages: Parsed pages.
+    """
+    key = doc_key(document_id)
+    try:
+        summary = await summarizer.summarize(pages)
+    except Exception as exc:
+        logger.warning("summary failed document_id=%s error=%s", document_id, exc)
+        await client.hset(
+            key, mapping={"summary_status": SummaryStatus.failed, "error": f"summary failed: {exc}"}
+        )
+        return
+    if summary:
+        await client.hset(
+            key, mapping={"summary": summary, "summary_status": SummaryStatus.completed}
+        )
+    else:
+        await client.hset(key, "summary_status", SummaryStatus.skipped)
 
 
 async def _process(client: redis.Redis, document_id: str) -> None:
@@ -62,7 +86,7 @@ async def _process(client: redis.Redis, document_id: str) -> None:
         await pipe.execute()
 
     await update_status(client, document_id, DocumentStatus.summarizing)
-    await summarize(client, document_id)
+    await _summarize(client, document_id, pages)
     await update_status(client, document_id, DocumentStatus.completed)
 
 

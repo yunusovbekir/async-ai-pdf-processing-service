@@ -39,7 +39,7 @@ Upload errors: `400` (non-PDF, empty, too many files; body `{"detail": [{"filena
 
 `python -m app.worker.main` (compose service `worker`; scale with `docker compose up --scale worker=3`). Each worker is a consumer `hostname-pid` in group `workers`, processing up to `WORKER_CONCURRENCY` jobs concurrently.
 
-Pipeline: skip if `completed` -> `parsing` -> parse per page -> store pages + `page_count` -> `summarizing` -> summary step (currently `summary_status=skipped`; hook for Gemini) -> `completed` -> `XACK`.
+Pipeline: skip if `completed` -> `parsing` -> parse per page -> store pages + `page_count` -> `summarizing` -> summary step (Gemini, see [summarization](docs/features/summarization.md)) -> `completed` -> `XACK`.
 
 - `ParserError` is permanent: document `failed`, job acked.
 - Other exceptions are transient: re-enqueued with `attempt+1` while `attempt < MAX_ATTEMPTS`; afterwards the document is `failed` and the job goes to `docs:jobs:dead`.
@@ -72,13 +72,24 @@ All via environment (see `.env.example`).
 | `DATA_TTL_SECONDS` | `604800` | TTL for all Redis keys |
 | `MAX_FILE_SIZE_MB` | `20` | Max size per file |
 | `MAX_FILES_PER_UPLOAD` | `10` | Max files per request |
-| `GEMINI_API_KEY` | empty | Gemini key (not used yet) |
-| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Gemini model (not used yet) |
-| `GEMINI_MAX_CONCURRENCY` | `2` | Gemini concurrency (not used yet) |
+| `GEMINI_API_KEY` | empty | Gemini API key (required for summaries) |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Gemini model |
+| `GEMINI_MAX_CONCURRENCY` | `2` | Max concurrent Gemini requests per process |
+| `GEMINI_TIMEOUT_SECONDS` | `60` | Per-request timeout |
+| `GEMINI_MAX_RETRIES` | `4` | Attempts per request on 429/5xx/timeouts (exponential backoff + jitter) |
+| `SUMMARY_MAX_INPUT_CHARS` | `100000` | Document text sent to Gemini is truncated to this length |
 | `WORKER_CONCURRENCY` | `4` | Concurrent jobs per worker |
 | `MAX_ATTEMPTS` | `3` | Attempts before dead-lettering |
 | `CLAIM_IDLE_MS` | `60000` | Idle time before a pending job is reclaimed |
 | `LOG_LEVEL` | `INFO` | Logging level |
+
+## Gemini API key and summaries
+
+1. Open [Google AI Studio](https://aistudio.google.com/apikey) and sign in with a Google account.
+2. Click **Create API key** (free tier, no billing needed) and copy it.
+3. Put it in `.env` as `GEMINI_API_KEY=...` and restart the worker.
+
+The free tier has low per-minute/per-day request limits; `429` responses are retried with backoff, and `GEMINI_MAX_CONCURRENCY` (default `2`) keeps load down. If limits persist, lower the concurrency or upload fewer files at once. Details: [summarization](docs/features/summarization.md).
 
 ## Tests
 
@@ -96,5 +107,6 @@ uv run pytest
 - A password-protected PDF is only supported if it opens with an empty password.
 - A missing upload file is treated as a transient error (retried, then dead-lettered).
 - Empty `error`/`summary` are returned as `null`.
-- The `gemini` parser and summarization are not implemented yet; the summary step is skipped (`summary_status=skipped`).
+- The `gemini` parser is not implemented yet.
+- A summary failure (including a missing `GEMINI_API_KEY`) does not fail the document: pages are kept, `summary_status=failed`, `error` holds the reason, status is `completed`. Documents without text get `summary_status=skipped`.
 - A missing document hash (expired TTL) makes the worker drop the job.
