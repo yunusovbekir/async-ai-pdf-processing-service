@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel
+from pypdf import PdfReader
+from pypdf.errors import PyPdfError
 
 from app.schemas import ParserType
 
@@ -23,6 +25,32 @@ class Parser(Protocol):
         ...
 
 
+def open_pdf(path: Path) -> PdfReader:
+    """Open a PDF and validate it (shared by all parsers).
+
+    Args:
+        path: PDF file path.
+
+    Returns:
+        A decrypted reader with at least one page.
+
+    Raises:
+        ParserError: If the PDF is encrypted, unreadable or has no pages.
+    """
+    try:
+        reader = PdfReader(path)
+        if reader.is_encrypted and not reader.decrypt(""):
+            raise ParserError("encrypted PDF not supported")
+        page_count = len(reader.pages)
+    except ParserError:
+        raise
+    except (PyPdfError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise ParserError(f"could not read PDF: {exc}") from exc
+    if page_count == 0:
+        raise ParserError("PDF has no pages")
+    return reader
+
+
 def get_parser(parser_type: ParserType) -> Parser:
     """Return the parser implementation for a parser type.
 
@@ -39,4 +67,8 @@ def get_parser(parser_type: ParserType) -> Parser:
         from app.parsers.pypdf_parser import PyPdfParser
 
         return PyPdfParser()
+    if parser_type == ParserType.gemini:
+        from app.parsers.gemini_parser import GeminiParser
+
+        return GeminiParser()
     raise ParserError(f"parser '{parser_type}' is not supported yet")
