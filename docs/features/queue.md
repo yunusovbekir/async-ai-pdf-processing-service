@@ -12,4 +12,4 @@ Redis Streams job queue.
 - `ensure_group(client)` runs on API startup: `XGROUP CREATE docs:jobs workers 0 MKSTREAM`, ignoring `BUSYGROUP` (idempotent).
 - `enqueue(client, document_id, attempt=1)` does `XADD` with approximate `MAXLEN ~ 100000` and returns the entry id.
 
-The worker is not implemented yet; entries stay pending in the stream until it is.
+Jobs are consumed by the [worker](worker.md), which re-enqueues transient failures with `attempt+1` and writes exhausted jobs to `docs:jobs:dead` (fields `document_id`, `attempt`, `error`).
