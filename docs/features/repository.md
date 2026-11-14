@@ -14,6 +14,6 @@ Functions
 - `create_batch(client, batch_id, parser, documents)` – one transactional pipeline creating the batch and its documents (`status=queued`, `summary_status=pending`) with TTL.
 - `get_document(client, id, with_pages=True)` – document dict or `None`.
 - `get_batch(client, id)` – batch dict with `documents` (no pages) or `None`.
-- `update_status(client, id, status, **fields)` – sets status plus extra fields, refreshes `updated_at` and TTL, and publishes the event, all in one transaction. Used by the worker (not yet implemented).
+- `update_status(client, id, status, **fields)` – sets status plus extra fields, refreshes `updated_at` and TTL, and publishes the event, all in one transaction. Used by the worker.
 
 Enums (`DocumentStatus`, `SummaryStatus`, `ParserType`) and response models live in `backend/app/schemas.py`.
