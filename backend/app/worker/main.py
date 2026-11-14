@@ -1,3 +1,11 @@
+"""Worker entrypoint (`python -m app.worker.main`).
+
+Connects to Redis and, in later PRs, consumes document jobs from the `docs:jobs`
+stream. For now it only logs "worker started" and idles until SIGTERM/SIGINT,
+then shuts down gracefully. While running it writes a readiness file used by the
+compose healthcheck.
+"""
+
 import asyncio
 import logging
 import signal
