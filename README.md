@@ -231,13 +231,11 @@ uv run pytest
 - Virus scanning of uploads.
 - Object storage (S3/GCS) instead of the shared volume.
 - Metrics and tracing (Prometheus/OpenTelemetry), queue-depth autoscaling.
-- GPT-5 Mini OCR parser.
 
 ## Assumptions
 
 - `GET /parsers` does not yet report parser availability; the frontend supports an optional `unavailable_parsers` field and treats all listed parsers as available otherwise.
 - No authentication: anyone who can reach the API can upload and read. Document and batch ids are random UUIDs (uuid4 hex) and act as unguessable capability tokens.
-- The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `llm` (alias `gemini`) exist.
 - SSE streams are capped at `SSE_MAX_DURATION_SECONDS`; clients are expected to reconnect (the snapshot makes this safe).
 - `.env` is required by compose; `REDIS_URL` and `UPLOAD_DIR` are overridden in compose for container paths.
 - Upload validation errors use `413` if any file is oversized, otherwise `400`; too many files is `400`.
