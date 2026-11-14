@@ -11,39 +11,46 @@ logger = logging.getLogger(__name__)
 
 
 def doc_key(document_id: str) -> str:
-    """Redis key of the document hash."""
+    """Return the Redis key of the document hash."""
     return f"doc:{document_id}"
 
 
 def pages_key(document_id: str) -> str:
-    """Redis key of the document pages list."""
+    """Return the Redis key of the document pages list."""
     return f"doc:{document_id}:pages"
 
 
 def batch_key(batch_id: str) -> str:
-    """Redis key of the batch hash."""
+    """Return the Redis key of the batch hash."""
     return f"batch:{batch_id}"
 
 
 def batch_docs_key(batch_id: str) -> str:
-    """Redis key of the batch document id list."""
+    """Return the Redis key of the batch document id list."""
     return f"batch:{batch_id}:docs"
 
 
 def events_channel(batch_id: str) -> str:
-    """Pub/Sub channel for batch status events."""
+    """Return the Pub/Sub channel for batch status events."""
     return f"batch:{batch_id}:events"
 
 
 def _now() -> str:
-    """Current UTC time as an ISO 8601 string."""
+    """Return the current UTC time as an ISO 8601 string."""
     return datetime.now(UTC).isoformat()
 
 
 async def create_batch(
     client: redis.Redis, batch_id: str, parser: ParserType, documents: list[tuple[str, str]]
 ) -> None:
-    """Atomically store a batch and its documents (id, filename) as queued."""
+    """Atomically store a batch and its documents as queued.
+
+    Args:
+        client: Redis client.
+        batch_id: Batch identifier.
+        parser: Parser chosen for the batch.
+        documents: (document_id, filename) pairs.
+    """
     ttl = get_settings().DATA_TTL_SECONDS
     now = _now()
     async with client.pipeline(transaction=True) as pipe:
@@ -77,7 +84,14 @@ async def create_batch(
 
 
 def _clean(raw: dict[str, str]) -> dict[str, object]:
-    """Convert a raw hash into typed values, mapping empty strings to None."""
+    """Convert a raw hash into typed values, mapping empty strings to None.
+
+    Args:
+        raw: Hash as returned by HGETALL.
+
+    Returns:
+        The cleaned document fields.
+    """
     data: dict[str, object] = {k: (v if v != "" else None) for k, v in raw.items()}
     data["attempts"] = int(raw.get("attempts") or 0)
     if data.get("page_count") is not None:
@@ -88,7 +102,16 @@ def _clean(raw: dict[str, str]) -> dict[str, object]:
 async def get_document(
     client: redis.Redis, document_id: str, with_pages: bool = True
 ) -> dict[str, object] | None:
-    """Fetch a document (optionally with pages), or None if unknown."""
+    """Fetch a document, optionally with its pages.
+
+    Args:
+        client: Redis client.
+        document_id: Document identifier.
+        with_pages: Whether to include the parsed pages.
+
+    Returns:
+        The document fields, or None if unknown.
+    """
     raw = await client.hgetall(doc_key(document_id))
     if not raw:
         return None
@@ -100,7 +123,15 @@ async def get_document(
 
 
 async def get_batch(client: redis.Redis, batch_id: str) -> dict[str, object] | None:
-    """Fetch a batch with its documents (no pages), or None if unknown."""
+    """Fetch a batch with its documents (without pages).
+
+    Args:
+        client: Redis client.
+        batch_id: Batch identifier.
+
+    Returns:
+        The batch fields and documents, or None if unknown.
+    """
     raw = await client.hgetall(batch_key(batch_id))
     if not raw:
         return None
@@ -115,7 +146,14 @@ async def update_status(
     status: DocumentStatus,
     **fields: str | int,
 ) -> None:
-    """Set status (plus optional extra hash fields) and publish the change event."""
+    """Set a document status and publish the change event.
+
+    Args:
+        client: Redis client.
+        document_id: Document identifier.
+        status: New status.
+        **fields: Extra hash fields to update.
+    """
     batch_id = await client.hget(doc_key(document_id), "batch_id")
     if batch_id is None:
         logger.warning("status update for unknown document_id=%s", document_id)

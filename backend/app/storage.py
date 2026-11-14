@@ -13,6 +13,13 @@ PDF_MAGIC = b"%PDF-"
 
 
 class InvalidUploadError(Exception):
+    """An uploaded file failed validation.
+
+    Attributes:
+        message: Human-readable reason.
+        status_code: Suggested HTTP status code.
+    """
+
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.message = message
@@ -20,14 +27,30 @@ class InvalidUploadError(Exception):
 
 
 def upload_path(document_id: str) -> Path:
-    """Return the on-disk path for a document id."""
+    """Return the on-disk path for a document.
+
+    Args:
+        document_id: Document identifier.
+
+    Returns:
+        Path of the form UPLOAD_DIR/{document_id}.pdf.
+    """
     return Path(get_settings().UPLOAD_DIR) / f"{document_id}.pdf"
 
 
 async def save_upload(file: UploadFile, document_id: str) -> Path:
     """Stream the upload to disk in chunks, enforcing size and PDF signature.
 
-    Removes the partial file and raises InvalidUploadError on failure.
+    Args:
+        file: Uploaded file.
+        document_id: Identifier used for the stored file name.
+
+    Returns:
+        Path of the saved file.
+
+    Raises:
+        InvalidUploadError: If the file is empty, not a PDF or too large.
+            The partial file is removed.
     """
     max_bytes = get_settings().MAX_FILE_SIZE_MB * 1024 * 1024
     path = upload_path(document_id)
@@ -56,7 +79,11 @@ async def save_upload(file: UploadFile, document_id: str) -> Path:
 
 
 async def delete_files(paths: list[Path]) -> None:
-    """Delete the given files off the event loop, ignoring missing ones."""
+    """Delete files off the event loop, ignoring missing ones.
+
+    Args:
+        paths: Files to delete.
+    """
 
     def _delete() -> None:
         for path in paths:

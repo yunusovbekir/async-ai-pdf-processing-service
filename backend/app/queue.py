@@ -12,7 +12,11 @@ STREAM_MAXLEN = 100_000
 
 
 async def ensure_group(client: redis.Redis) -> None:
-    """Create the stream and consumer group if missing (idempotent)."""
+    """Create the stream and consumer group if missing (idempotent).
+
+    Args:
+        client: Redis client.
+    """
     try:
         await client.xgroup_create(STREAM, GROUP, id="0", mkstream=True)
     except ResponseError as exc:
@@ -21,7 +25,16 @@ async def ensure_group(client: redis.Redis) -> None:
 
 
 async def enqueue(client: redis.Redis, document_id: str, attempt: int = 1) -> str:
-    """Add a job for a document to the stream and return the entry id."""
+    """Add a processing job to the stream.
+
+    Args:
+        client: Redis client.
+        document_id: Document to process.
+        attempt: Attempt number for this job.
+
+    Returns:
+        The stream entry id.
+    """
     entry_id = await client.xadd(
         STREAM,
         {"document_id": document_id, "attempt": attempt},
