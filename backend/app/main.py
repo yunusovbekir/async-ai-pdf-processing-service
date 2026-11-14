@@ -13,6 +13,7 @@ from app.api.events import router as events_router
 from app.config import get_settings
 from app.logging_config import setup_logging
 from app.redis_client import close_redis, get_redis
+from app.schemas import ParsersResponse, ParserType
 
 logger = logging.getLogger(__name__)
 
@@ -42,3 +43,15 @@ async def health() -> JSONResponse:
         logger.exception("redis health check failed")
         return JSONResponse({"status": "degraded", "redis": "down"}, status_code=503)
     return JSONResponse({"status": "ok", "redis": "up"})
+
+
+@app.get("/parsers", response_model=ParsersResponse)
+async def list_parsers() -> ParsersResponse:
+    """List selectable parsers and the upload limits."""
+    settings = get_settings()
+    return ParsersResponse(
+        parsers=[ParserType.pypdf, ParserType.llm],
+        default=ParserType.pypdf,
+        max_file_size_mb=settings.MAX_FILE_SIZE_MB,
+        max_files_per_upload=settings.MAX_FILES_PER_UPLOAD,
+    )

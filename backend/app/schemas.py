@@ -84,3 +84,12 @@ class BatchResponse(BaseModel):
     parser: ParserType
     created_at: str
     documents: list[DocumentSummaryView]
+
+
+class ParsersResponse(BaseModel):
+    """Response of `GET /parsers`."""
+
+    parsers: list[ParserType]
+    default: ParserType
+    max_file_size_mb: int
+    max_files_per_upload: int
