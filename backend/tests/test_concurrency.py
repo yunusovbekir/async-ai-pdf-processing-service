@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from httpx import AsyncClient
 
-from app import gemini_client, repository
+from app import llm, repository
 from app.worker.main import Consumer
 
 FIXTURE = Path(__file__).parent / "fixtures" / "text.pdf"
@@ -16,7 +16,7 @@ async def test_concurrent_uploads_are_all_accepted_and_processed(
     client: AsyncClient, fake_redis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Twenty simultaneous uploads are accepted and every document completes."""
-    monkeypatch.setattr(gemini_client, "generate", AsyncMock(return_value="summary"))
+    monkeypatch.setattr(llm, "generate", AsyncMock(return_value="summary"))
     data = FIXTURE.read_bytes()
 
     responses = await asyncio.gather(

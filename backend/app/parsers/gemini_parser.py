@@ -1,15 +1,14 @@
-"""Gemini parser: converts each PDF page to markdown."""
+"""LLM parser (API value `gemini`): converts each PDF page to markdown."""
 
 import asyncio
 import io
 import logging
 from pathlib import Path
 
-from google.genai import types
 from pypdf import PdfWriter
 from pypdf.errors import PyPdfError
 
-from app import gemini_client
+from app import llm
 from app.parsers.base import PageContent, ParserError, open_pdf
 
 logger = logging.getLogger(__name__)
@@ -37,21 +36,21 @@ def _split(path: Path) -> list[bytes]:
 
 
 class GeminiParser:
-    """Parser that asks Gemini to convert every page to markdown."""
+    """Parser that asks the configured LLM to convert every page to markdown."""
 
     async def parse(self, path: Path) -> list[PageContent]:
-        """Convert each page to markdown with Gemini, preserving page order.
+        """Convert each page to markdown with the configured LLM, preserving page order.
 
-        Pages are sent concurrently through the shared Gemini semaphore/retry helper.
+        Pages are sent concurrently through the shared LLM semaphore/retry helper.
         A page that still fails after retries raises its exception, which the worker
         treats as a transient failure of the whole document.
 
         Raises:
-            ParserError: If the PDF is invalid or GEMINI_API_KEY is not set.
+            ParserError: If the PDF is invalid or the provider's API key is not set.
         """
         try:
-            gemini_client.get_client()
-        except gemini_client.GeminiConfigError as exc:
+            llm.get_provider()
+        except llm.LLMConfigError as exc:
             raise ParserError(f"gemini parser unavailable: {exc}") from exc
         chunks = await asyncio.to_thread(_split, path)
         results = await asyncio.gather(*(self._convert(chunk) for chunk in chunks))
@@ -60,5 +59,4 @@ class GeminiParser:
     @staticmethod
     async def _convert(chunk: bytes) -> str:
         """Convert one single-page PDF to markdown."""
-        part = types.Part.from_bytes(data=chunk, mime_type="application/pdf")
-        return (await gemini_client.generate([part, PROMPT])).strip()
+        return (await llm.generate_from_pdf(chunk, PROMPT)).strip()

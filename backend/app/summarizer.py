@@ -1,8 +1,8 @@
-"""Document summarization with Gemini."""
+"""Document summarization with the configured LLM provider."""
 
 import logging
 
-from app import gemini_client
+from app import llm
 from app.config import get_settings
 from app.parsers.base import PageContent
 
@@ -42,10 +42,10 @@ async def summarize(pages: list[PageContent]) -> str:
         A markdown summary, or "" (without calling the API) if the document has no text.
 
     Raises:
-        GeminiConfigError: If GEMINI_API_KEY is not set.
-        google.genai.errors.APIError: If the API call fails after retries.
+        LLMConfigError: If the configured provider is unknown or its API key is missing.
+        Exception: If the provider call fails after retries.
     """
     text = build_text(pages, get_settings().SUMMARY_MAX_INPUT_CHARS)
     if not text:
         return ""
-    return (await gemini_client.generate(PROMPT.format(text=text))).strip()
+    return (await llm.generate(PROMPT.format(text=text))).strip()

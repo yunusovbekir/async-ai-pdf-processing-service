@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,21 +18,24 @@ class Settings(BaseSettings):
     UPLOAD_CLEANUP_INTERVAL_SECONDS: int = 3600
     MAX_FILE_SIZE_MB: int = 20
     MAX_FILES_PER_UPLOAD: int = 10
+    LLM_PROVIDER: str = "gemini"
+    LLM_MODEL: str = ""
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
-    GEMINI_MAX_CONCURRENCY: int = 2
-    GEMINI_TIMEOUT_SECONDS: int = 60
-    GEMINI_MAX_RETRIES: int = 4
+    OPENAI_API_KEY: str = ""
+    LLM_MAX_CONCURRENCY: int = Field(
+        2, validation_alias=AliasChoices("LLM_MAX_CONCURRENCY", "GEMINI_MAX_CONCURRENCY")
+    )
+    LLM_TIMEOUT_SECONDS: int = Field(
+        60, validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "GEMINI_TIMEOUT_SECONDS")
+    )
+    LLM_MAX_RETRIES: int = Field(
+        4, validation_alias=AliasChoices("LLM_MAX_RETRIES", "GEMINI_MAX_RETRIES")
+    )
     SUMMARY_MAX_INPUT_CHARS: int = 100_000
     WORKER_CONCURRENCY: int = 4
     MAX_ATTEMPTS: int = 3
     CLAIM_IDLE_MS: int = 60_000
     LOG_LEVEL: str = "INFO"
-
-    @field_validator("GEMINI_MODEL")
-    @classmethod
-    def _strip_model(cls, value: str) -> str:
-        return value.strip()
 
 
 @lru_cache

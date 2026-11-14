@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app import gemini_client, queue, repository
+from app import llm, queue, repository
 from app.parsers.base import NO_TEXT_NOTE
 from app.schemas import ParserType
 from app.storage import upload_path
@@ -15,9 +15,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
-def fake_gemini(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+def fake_llm(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock(return_value="## Summary\n- point")
-    monkeypatch.setattr(gemini_client, "generate", mock)
+    monkeypatch.setattr(llm, "generate", mock)
     return mock
 
 
@@ -41,7 +41,7 @@ async def _run_once(fake_redis) -> None:
         await process_message(fake_redis, entry_id, fields)
 
 
-async def test_end_to_end(fake_redis, fake_gemini) -> None:
+async def test_end_to_end(fake_redis, fake_llm) -> None:
     document_id = await _submit(fake_redis, "text.pdf")
     pubsub = fake_redis.pubsub()
     await pubsub.subscribe(repository.events_channel("b1"))
@@ -129,8 +129,8 @@ async def test_consumer_loop_processes_and_stops(fake_redis) -> None:
     assert doc["status"] == "completed"
 
 
-async def test_summary_failure_keeps_document_completed(fake_redis, fake_gemini) -> None:
-    fake_gemini.side_effect = RuntimeError("boom")
+async def test_summary_failure_keeps_document_completed(fake_redis, fake_llm) -> None:
+    fake_llm.side_effect = RuntimeError("boom")
     document_id = await _submit(fake_redis, "text.pdf")
     await _run_once(fake_redis)
 
@@ -142,11 +142,11 @@ async def test_summary_failure_keeps_document_completed(fake_redis, fake_gemini)
     assert len(doc["pages"]) == 2
 
 
-async def test_empty_text_skips_summary(fake_redis, fake_gemini) -> None:
+async def test_empty_text_skips_summary(fake_redis, fake_llm) -> None:
     document_id = await _submit(fake_redis, "blank.pdf")
     await _run_once(fake_redis)
 
     doc = await repository.get_document(fake_redis, document_id)
     assert doc["status"] == "completed"
     assert doc["summary_status"] == "skipped"
-    fake_gemini.assert_not_called()
+    fake_llm.assert_not_called()
