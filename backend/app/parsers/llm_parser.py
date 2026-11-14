@@ -1,4 +1,4 @@
-"""LLM parser (API value `gemini`): converts each PDF page to markdown."""
+"""LLM parser (API values `llm` and legacy `gemini`): converts each PDF page to markdown."""
 
 import asyncio
 import io
@@ -35,7 +35,7 @@ def _split(path: Path) -> list[bytes]:
     return chunks
 
 
-class GeminiParser:
+class LlmParser:
     """Parser that asks the configured LLM to convert every page to markdown."""
 
     async def parse(self, path: Path) -> list[PageContent]:
@@ -51,7 +51,7 @@ class GeminiParser:
         try:
             llm.get_provider()
         except llm.LLMConfigError as exc:
-            raise ParserError(f"gemini parser unavailable: {exc}") from exc
+            raise ParserError(f"llm parser unavailable: {exc}") from exc
         chunks = await asyncio.to_thread(_split, path)
         results = await asyncio.gather(*(self._convert(chunk) for chunk in chunks))
         return [PageContent(page=i, content=text) for i, text in enumerate(results, start=1)]

@@ -7,7 +7,7 @@ Upload 1..`MAX_FILES_PER_UPLOAD` PDFs as one batch and queue each for processing
 | Field    | Type            | Required | Notes                                  |
 |----------|-----------------|----------|----------------------------------------|
 | `files`  | file (repeated) | yes      | PDFs, each ≤ `MAX_FILE_SIZE_MB`        |
-| `parser` | string          | no       | `pypdf` (default) or `gemini`          |
+| `parser` | string          | no       | `pypdf` (default), `llm`, or `gemini` (legacy alias of `llm`) |
 
 ```bash
 curl -F files=@a.pdf -F files=@b.pdf -F parser=pypdf localhost:8000/documents

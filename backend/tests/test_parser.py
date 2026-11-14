@@ -101,3 +101,10 @@ async def test_llm_rejects_corrupted_pdf(llm_pdf) -> None:
     with pytest.raises(ParserError):
         await get_parser(ParserType.gemini).parse(FIXTURES / "corrupted.pdf")
     llm_pdf.assert_not_called()
+
+
+@pytest.mark.parametrize("parser", [ParserType.llm, ParserType.gemini])
+async def test_llm_and_legacy_gemini_values_use_llm_parser(llm_pdf, parser) -> None:
+    llm_pdf.return_value = "x"
+    pages = await get_parser(parser).parse(FIXTURES / "text.pdf")
+    assert [p.content for p in pages] == ["x", "x"]

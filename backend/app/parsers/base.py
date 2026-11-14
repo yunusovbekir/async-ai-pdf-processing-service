@@ -9,7 +9,7 @@ from pypdf.errors import PyPdfError
 
 from app.schemas import ParserType
 
-NO_TEXT_NOTE = "no text layer found; try the gemini parser"
+NO_TEXT_NOTE = "no text layer found; try the llm parser"
 
 
 class PageContent(BaseModel):
@@ -73,8 +73,8 @@ def get_parser(parser_type: ParserType) -> Parser:
         from app.parsers.pypdf_parser import PyPdfParser
 
         return PyPdfParser()
-    if parser_type == ParserType.gemini:
-        from app.parsers.gemini_parser import GeminiParser
+    if parser_type in (ParserType.llm, ParserType.gemini):
+        from app.parsers.llm_parser import LlmParser
 
-        return GeminiParser()
+        return LlmParser()
     raise ParserError(f"parser '{parser_type}' is not supported yet")

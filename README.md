@@ -1,6 +1,6 @@
 # Async PDF processing service
 
-Upload one or more PDFs, choose a parser (`pypdf` or `gemini`), and get per-page text/markdown plus an LLM summary of each file (Gemini or OpenAI, switchable via env). The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai / openai.
+Upload one or more PDFs, choose a parser (`pypdf` or `llm`; `gemini` is a legacy alias of `llm`), and get per-page text/markdown plus an LLM summary of each file (Gemini or OpenAI, switchable via env). The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai / openai.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Services: `api` (port 8000), `worker`, `redis`.
 
 ### Demo
 
-`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `gemini`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. Without the selected provider's API key the documents still complete, with `summary_status=failed`, while the `gemini` parser fails the document with a clear error.
+`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `llm`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. Without the selected provider's API key the documents still complete, with `summary_status=failed`, while the `llm` parser fails the document with a clear error.
 
 ### Scaling workers
 
@@ -63,9 +63,9 @@ Upload errors: `400` (non-PDF, empty, too many files; body `{"detail": [{"filena
 | Parser | How it works | Use when |
 |--------|--------------|----------|
 | `pypdf` (default) | Extracts the text layer per page, locally and fast | Digital PDFs with selectable text |
-| `gemini` | Splits the PDF into single pages and asks the configured LLM (`LLM_PROVIDER`, Gemini by default; the API value stays `gemini` for compatibility even with OpenAI) to convert each to markdown (tables, lists, image/chart descriptions); pages run concurrently with retries, order preserved | Scanned PDFs, or layouts/tables/charts that need markdown. Needs the provider's API key; slower and uses API quota |
+| `llm` (alias `gemini`) | Splits the PDF into single pages and asks the configured LLM (`LLM_PROVIDER`, Gemini by default; `gemini` is still accepted and behaves identically; the value is stored as submitted) to convert each to markdown (tables, lists, image/chart descriptions); pages run concurrently with retries, order preserved | Scanned PDFs, or layouts/tables/charts that need markdown. Needs the provider's API key; slower and uses API quota |
 
-Encrypted, corrupted and zero-page PDFs fail with a user-facing error (both parsers); a missing API key for the configured provider fails `gemini` documents with a clear error. A page that keeps failing after retries is a transient failure of the whole document (worker retry policy applies). `pypdf` on a PDF without a text layer completes with the note "no text layer found; try the gemini parser". See [parsers](docs/features/parsers.md).
+Encrypted, corrupted and zero-page PDFs fail with a user-facing error (both parsers); a missing API key for the configured provider fails `llm`/`gemini` documents with a clear error. A page that keeps failing after retries is a transient failure of the whole document (worker retry policy applies). `pypdf` on a PDF without a text layer completes with the note "no text layer found; try the llm parser". See [parsers](docs/features/parsers.md).
 
 ## Worker
 
@@ -136,7 +136,7 @@ OPENAI_API_KEY=...
 LLM_MODEL=gpt-5-mini                # optional
 ```
 
-`LLM_MODEL` is any model name the provider accepts (empty = provider default). Summaries and the `gemini` parser both use the configured provider, sharing one global concurrency limit and retry policy (`app/llm/client.py`). OpenAI receives each page as a base64 PDF `input_file` via the Responses API. The parser value `gemini` is kept unchanged in the API/Redis contract; with `LLM_PROVIDER=openai` it means "LLM-based parser". A missing key (or unknown provider) fails `gemini`-parser documents with a clear error and marks summaries `failed`.
+`LLM_MODEL` is any model name the provider accepts (empty = provider default). Summaries and the `llm` parser both use the configured provider, sharing one global concurrency limit and retry policy (`app/llm/client.py`). OpenAI receives each page as a base64 PDF `input_file` via the Responses API. The parser values `llm` and the legacy `gemini` are both accepted (same `LlmParser` in `app/parsers/llm_parser.py`), independent of the provider. A missing key (or unknown provider) fails `llm`-parser documents with a clear error and marks summaries `failed`.
 
 ### Adding a provider
 
@@ -161,7 +161,7 @@ The free tier has low per-minute/per-day request limits; `429` responses are ret
 ## Retry and failure semantics
 
 - Delivery is at-least-once: a job is acked only after the document reaches a final state; processing is idempotent (completed documents are skipped).
-- Permanent failures (`ParserError`: encrypted, corrupted, zero pages, missing provider API key for the `gemini` parser) mark the document `failed` immediately.
+- Permanent failures (`ParserError`: encrypted, corrupted, zero pages, missing provider API key for the `llm` parser) mark the document `failed` immediately.
 - Transient failures are re-enqueued with `attempt+1` up to `MAX_ATTEMPTS`; then the document is `failed` and the job is copied to `docs:jobs:dead`.
 - Crashed workers: pending jobs idle longer than `CLAIM_IDLE_MS` are reclaimed by another worker via `XAUTOCLAIM`.
 - Summary failures never fail a document (see Assumptions).
@@ -207,7 +207,7 @@ uv run pytest
 ## Assumptions
 
 - No authentication: anyone who can reach the API can upload and read. Document and batch ids are random UUIDs (uuid4 hex) and act as unguessable capability tokens.
-- The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `gemini` exist.
+- The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `llm` (alias `gemini`) exist.
 - SSE is not implemented; clients poll `GET /batches/{id}` / `GET /documents/{id}`.
 - `.env` is required by compose; `REDIS_URL` and `UPLOAD_DIR` are overridden in compose for container paths.
 - Upload validation errors use `413` if any file is oversized, otherwise `400`; too many files is `400`.

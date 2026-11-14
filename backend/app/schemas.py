@@ -9,7 +9,8 @@ class ParserType(StrEnum):
     """Available PDF parsers."""
 
     pypdf = "pypdf"
-    gemini = "gemini"
+    llm = "llm"
+    gemini = "gemini"  # legacy alias of `llm`, kept for backward compatibility
 
 
 class DocumentStatus(StrEnum):
