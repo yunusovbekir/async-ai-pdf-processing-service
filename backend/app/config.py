@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     UPLOAD_DIR: str = "/data/uploads"
     DATA_TTL_SECONDS: int = 7 * 24 * 3600
+    UPLOAD_TTL_SECONDS: int = 7 * 24 * 3600
+    UPLOAD_CLEANUP_INTERVAL_SECONDS: int = 3600
     MAX_FILE_SIZE_MB: int = 20
     MAX_FILES_PER_UPLOAD: int = 10
     GEMINI_API_KEY: str = ""

@@ -77,6 +77,7 @@ Pipeline: skip if `completed` -> `parsing` -> parse per page -> store pages + `p
 - Other exceptions are transient: re-enqueued with `attempt+1` while `attempt < MAX_ATTEMPTS`; afterwards the document is `failed` and the job goes to `docs:jobs:dead`.
 - `XAUTOCLAIM` takes over jobs idle longer than `CLAIM_IDLE_MS` (crashed consumers).
 - SIGTERM/SIGINT: stop reading, finish in-flight jobs.
+- Upload cleanup: at startup and every `UPLOAD_CLEANUP_INTERVAL_SECONDS` each worker deletes `*.pdf` files in `UPLOAD_DIR` whose mtime is older than `UPLOAD_TTL_SECONDS` (file I/O in `asyncio.to_thread`; concurrent workers and missing files are tolerated).
 
 See [worker](docs/features/worker.md), [queue](docs/features/queue.md).
 
@@ -91,7 +92,7 @@ See [worker](docs/features/worker.md), [queue](docs/features/queue.md).
 | `batch:{id}` / `batch:{id}:docs` | hash / list | id, parser, created_at / document ids |
 | `batch:{id}:events` | pub/sub | JSON `{document_id, status}` on every status change |
 
-All keys expire after `DATA_TTL_SECONDS`; uploaded files live in `UPLOAD_DIR/{document_id}.pdf`, never in Redis. See [repository](docs/features/repository.md), [storage](docs/features/storage.md).
+All keys expire after `DATA_TTL_SECONDS`; uploaded files live in `UPLOAD_DIR/{document_id}.pdf`, never in Redis, and are deleted by a periodic worker cleanup once older than `UPLOAD_TTL_SECONDS` (default 7 days, same as the Redis TTL). See [repository](docs/features/repository.md), [storage](docs/features/storage.md).
 
 ## Configuration
 
@@ -102,6 +103,8 @@ All via environment (see `.env.example`).
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (compose overrides) |
 | `UPLOAD_DIR` | `/data/uploads` | Shared upload volume (compose overrides) |
 | `DATA_TTL_SECONDS` | `604800` | TTL for all Redis keys |
+| `UPLOAD_TTL_SECONDS` | `604800` | Retention of files in `UPLOAD_DIR`; keep equal to `DATA_TTL_SECONDS` (7 days) |
+| `UPLOAD_CLEANUP_INTERVAL_SECONDS` | `3600` | How often each worker deletes expired uploads |
 | `MAX_FILE_SIZE_MB` | `20` | Max size per file |
 | `MAX_FILES_PER_UPLOAD` | `10` | Max files per request |
 | `GEMINI_API_KEY` | empty | Gemini API key (required for summaries) |
@@ -157,6 +160,7 @@ uv run pytest
 - Files on a shared volume avoid putting bytes in Redis but tie api and workers to shared storage.
 - Polling is simple and stateless; Pub/Sub events are published but no SSE endpoint exists yet.
 - Summaries are sent as one truncated request (`SUMMARY_MAX_INPUT_CHARS`) rather than map-reduce: cheap, but long documents are partially summarized.
+- Upload retention is mtime-based and independent of Redis: a document still being retried after 7 days would find its file gone (permanent in practice since jobs also expire with the Redis TTL). Every worker runs the cleanup; deletions are idempotent, so no leader election is needed.
 - At-least-once delivery means a Gemini request can be repeated after a crash.
 
 ## Future work
@@ -179,4 +183,5 @@ uv run pytest
 - A missing upload file is treated as a transient error (retried, then dead-lettered).
 - Empty `error`/`summary` are returned as `null`.
 - A summary failure (including a missing `GEMINI_API_KEY`) does not fail the document: pages are kept, `summary_status=failed`, `error` holds the reason, status is `completed`. Documents without text get `summary_status=skipped`.
+- Uploaded files are removed after `UPLOAD_TTL_SECONDS` (default equals `DATA_TTL_SECONDS`); keep the two in sync so a document never outlives its file or vice versa.
 - A missing document hash (expired TTL) makes the worker drop the job.
