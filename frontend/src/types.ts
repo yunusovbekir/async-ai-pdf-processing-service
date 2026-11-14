@@ -47,6 +47,8 @@ export interface BatchResponse {
 export interface ParsersResponse {
   parsers: ParserType[];
   default: ParserType;
+  /** Optional: parsers that are listed but cannot run (e.g. API key not configured). */
+  unavailable_parsers?: ParserType[];
   max_file_size_mb: number;
   max_files_per_upload: number;
 }
