@@ -1,0 +1,6 @@
+.env export-ignore
+.venv export-ignore
+node_modules export-ignore
+**/.venv export-ignore
+**/node_modules export-ignore
+**/__pycache__ export-ignore

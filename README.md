@@ -1,6 +1,24 @@
 # Async PDF processing service
 
-Upload PDFs, parse them per page (pypdf or Gemini) and summarize with Gemini. FastAPI + Redis Streams worker.
+Upload one or more PDFs, choose a parser (`pypdf` or `gemini`), and get per-page text/markdown plus a Gemini summary of each file. The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    C[Client] -->|POST /documents| A[API]
+    A -->|save PDF| V[(uploads volume)]
+    A -->|XADD| S[[Redis stream docs:jobs]]
+    S -->|XREADGROUP| W[Workers x N]
+    W -->|read PDF| V
+    W -->|parse + summarize| G[Gemini]
+    W -->|status, pages, summary| R[(Redis hashes/lists)]
+    W -.->|publish events| P[batch:id:events]
+    C -->|GET /batches/id, /documents/id| A
+    A -->|read| R
+```
+
+Status changes are published to the `batch:{id}:events` Pub/Sub channel; an SSE endpoint on top of it is not implemented yet (clients poll).
 
 ## Run
 
@@ -8,9 +26,18 @@ Upload PDFs, parse them per page (pypdf or Gemini) and summarize with Gemini. Fa
 cp .env.example .env   # set GEMINI_API_KEY when needed
 docker compose up --build
 curl localhost:8000/health
+scripts/demo.sh        # end-to-end demo (needs curl + jq)
 ```
 
 Services: `api` (port 8000), `worker`, `redis`.
+
+### Demo
+
+`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `gemini`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. Without `GEMINI_API_KEY` the documents still complete, with `summary_status=failed`, while the `gemini` parser fails the document with a clear error.
+
+### Scaling workers
+
+Workers are stateless consumers in group `workers`; run more with `docker compose up --build --scale worker=3`. Throughput is `workers x WORKER_CONCURRENCY` jobs; Gemini load is capped per process by `GEMINI_MAX_CONCURRENCY`, so total Gemini concurrency grows with the number of workers. The API can be scaled likewise behind a load balancer as long as all replicas share Redis and the uploads volume.
 
 ## API
 
@@ -96,6 +123,19 @@ All via environment (see `.env.example`).
 
 The free tier has low per-minute/per-day request limits; `429` responses are retried with backoff, and `GEMINI_MAX_CONCURRENCY` (default `2`) keeps load down. If limits persist, lower the concurrency or upload fewer files at once. Details: [summarization](docs/features/summarization.md).
 
+## Retry and failure semantics
+
+- Delivery is at-least-once: a job is acked only after the document reaches a final state; processing is idempotent (completed documents are skipped).
+- Permanent failures (`ParserError`: encrypted, corrupted, zero pages, missing Gemini key for the `gemini` parser) mark the document `failed` immediately.
+- Transient failures are re-enqueued with `attempt+1` up to `MAX_ATTEMPTS`; then the document is `failed` and the job is copied to `docs:jobs:dead`.
+- Crashed workers: pending jobs idle longer than `CLAIM_IDLE_MS` are reclaimed by another worker via `XAUTOCLAIM`.
+- Summary failures never fail a document (see Assumptions).
+- Errors are plain JSON: upload validation returns `{"detail": [{"filename", "error"}]}`; other errors return `{"detail": "message"}` (`400`, `404`, `413`, `422`, `503`).
+
+## Logging
+
+Standard `logging` with `key=value` context (`document_id`, `batch_id`, `attempt`, `entry_id`); level via `LOG_LEVEL`. All blocking work (pypdf, file I/O) runs in `asyncio.to_thread`.
+
 ## Tests
 
 ```bash
@@ -105,8 +145,34 @@ uv run ruff check .
 uv run pytest
 ```
 
+`tests/test_concurrency.py` fires 20 concurrent uploads and verifies all are accepted and processed (fakeredis, mocked Gemini).
+
+## Packaging
+
+`git archive -o app.zip HEAD` contains only tracked files; `.gitattributes` and `.gitignore`/`.dockerignore` additionally exclude `.venv`, `node_modules` and `.env`.
+
+## Trade-offs
+
+- Redis Streams as queue/store keeps the stack small (one dependency) at the cost of Redis memory limits and TTL-based retention (no durable history).
+- Files on a shared volume avoid putting bytes in Redis but tie api and workers to shared storage.
+- Polling is simple and stateless; Pub/Sub events are published but no SSE endpoint exists yet.
+- Summaries are sent as one truncated request (`SUMMARY_MAX_INPUT_CHARS`) rather than map-reduce: cheap, but long documents are partially summarized.
+- At-least-once delivery means a Gemini request can be repeated after a crash.
+
+## Future work
+
+- Authentication and multi-tenancy (per-user quotas and access control).
+- PII masking before sending text to Gemini.
+- Virus scanning of uploads.
+- Object storage (S3/GCS) instead of the shared volume.
+- Metrics and tracing (Prometheus/OpenTelemetry), queue-depth autoscaling.
+- SSE endpoint `GET /batches/{id}/events`, GPT-5 Mini OCR parser, web frontend.
+
 ## Assumptions
 
+- No authentication: anyone who can reach the API can upload and read. Document and batch ids are random UUIDs (uuid4 hex) and act as unguessable capability tokens.
+- The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `gemini` exist.
+- SSE is not implemented; clients poll `GET /batches/{id}` / `GET /documents/{id}`.
 - `.env` is required by compose; `REDIS_URL` and `UPLOAD_DIR` are overridden in compose for container paths.
 - Upload validation errors use `413` if any file is oversized, otherwise `400`; too many files is `400`.
 - A password-protected PDF is only supported if it opens with an empty password.

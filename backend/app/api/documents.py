@@ -1,3 +1,5 @@
+"""Document upload and read endpoints."""
+
 import logging
 import uuid
 from pathlib import Path

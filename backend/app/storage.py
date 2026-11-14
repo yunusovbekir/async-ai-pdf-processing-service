@@ -1,3 +1,5 @@
+"""Upload storage on the shared volume."""
+
 import asyncio
 import logging
 from pathlib import Path
@@ -21,6 +23,7 @@ class InvalidUploadError(Exception):
     """
 
     def __init__(self, message: str, status_code: int = 400) -> None:
+        """Create the error with a message and suggested HTTP status."""
         super().__init__(message)
         self.message = message
         self.status_code = status_code

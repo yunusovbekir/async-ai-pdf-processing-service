@@ -1,3 +1,5 @@
+"""Redis Streams job queue."""
+
 import logging
 
 import redis.asyncio as redis

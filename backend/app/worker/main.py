@@ -145,7 +145,10 @@ async def _handle_transient(
 
 
 class Consumer:
+    """Stream consumer that processes jobs concurrently and reclaims stale ones."""
+
     def __init__(self, client: redis.Redis, name: str, concurrency: int, claim_idle_ms: int):
+        """Create a consumer named `name` running up to `concurrency` jobs at once."""
         self.client = client
         self.name = name
         self.concurrency = concurrency
