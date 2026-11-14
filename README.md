@@ -6,6 +6,8 @@ Upload one or more PDFs, choose a parser (`pypdf` or `llm`; `gemini` is a legacy
 
 ```mermaid
 flowchart LR
+    B[Browser] -->|static app + /api/*| N[nginx frontend]
+    N -->|proxy /api/ to API| A
     C[Client] -->|POST /documents| A[API]
     A -->|save PDF| V[(uploads volume)]
     A -->|XADD| S[[Redis stream docs:jobs]]
@@ -29,7 +31,7 @@ curl localhost:8000/health
 scripts/demo.sh        # end-to-end demo (needs curl + jq)
 ```
 
-Services: `api` (port 8000), `worker`, `redis`.
+Services: `frontend` (port 3000), `api` (port 8000), `worker`, `redis`.
 
 ### Demo
 
@@ -45,6 +47,7 @@ Workers are stateless consumers in group `workers`; run more with `docker compos
 |----------|-------------|---------|
 | `GET /health` | API + Redis health (`200` / `503`) | [doc](docs/api/health.md) |
 | `POST /documents` | Upload PDFs, returns `202` with `batch_id` and document ids | [doc](docs/api/post-documents.md) |
+| `GET /parsers` | Selectable parsers and upload limits | [doc](docs/api/get-parsers.md) |
 | `GET /documents/{id}` | Status, error, summary, pages (`404` if unknown/expired) | [doc](docs/api/get-document.md) |
 | `GET /batches/{id}` | Batch with its documents, without pages (`404`) | [doc](docs/api/get-batch.md) |
 | `GET /batches/{id}/events` | SSE stream: `snapshot`, `document`, `done`, `: ping` (`404`) | [doc](docs/api/get-batch-events.md) |
@@ -58,6 +61,19 @@ curl localhost:8000/health
 ```
 
 Upload errors: `400` (non-PDF, empty, too many files; body `{"detail": [{"filename", "error"}]}`), `413` (file larger than `MAX_FILE_SIZE_MB`), `422` (invalid `parser` / no files), `503` (Redis failure while enqueueing). Any invalid file rejects the whole request and removes saved files.
+
+## Frontend
+
+React + TypeScript (Vite) app in `frontend/`, served by nginx at http://localhost:3000 with `docker compose up --build`. nginx serves the SPA (history fallback) and proxies `/api/` to the `api` service (buffering off and a 1h read timeout for SSE; `client_max_body_size 210m` = `MAX_FILES_PER_UPLOAD` x `MAX_FILE_SIZE_MB` of the defaults, raise it if you raise the limits). The current page is a shell showing the API status (`GET /health`) and the parser list (`GET /parsers`).
+
+Local development (API on :8000, e.g. via compose); Vite proxies `/api` to `http://localhost:8000`:
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173
+npm run lint && npm run typecheck && npm test && npm run build
+```
 
 ## Parsers
 

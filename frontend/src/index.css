@@ -1,0 +1,93 @@
+:root {
+  --color-bg: #f6f7f9;
+  --color-surface: #fff;
+  --color-text: #1b1f24;
+  --color-muted: #6b7280;
+  --color-border: #e1e4e8;
+  --color-primary: #2563eb;
+  --color-ok: #15803d;
+  --color-error: #b91c1c;
+  --radius: 8px;
+  --space: 1rem;
+  --max-width: 960px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header,
+.app-footer {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  border-style: solid;
+  border-width: 0;
+  padding: var(--space);
+}
+
+.app-header {
+  border-bottom-width: 1px;
+}
+
+.app-footer {
+  border-top-width: 1px;
+  font-size: 0.875rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+
+.muted {
+  color: var(--color-muted);
+}
+
+.error,
+.status-down {
+  color: var(--color-error);
+}
+
+.status-ok {
+  color: var(--color-ok);
+}
+
+@media (min-width: 640px) {
+  .app-header,
+  .app-footer {
+    padding-inline: calc(var(--space) * 2);
+  }
+}
