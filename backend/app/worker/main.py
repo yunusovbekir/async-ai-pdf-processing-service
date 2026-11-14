@@ -22,7 +22,7 @@ from app.queue import DEAD_STREAM, GROUP, STREAM, enqueue, ensure_group
 from app.redis_client import close_redis, get_redis
 from app.repository import doc_key, pages_key, update_status
 from app.schemas import DocumentStatus, ParserType, SummaryStatus
-from app.storage import upload_path
+from app.storage import cleanup_expired_uploads, upload_path
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +238,27 @@ class Consumer:
                 await asyncio.gather(*self._tasks, return_exceptions=True)
 
 
+async def cleanup_loop(stop: asyncio.Event, interval: float) -> None:
+    """Periodically delete expired uploads until `stop` is set.
+
+    Runs once at startup, then every `interval` seconds. Failures are logged and never
+    stop the loop.
+
+    Args:
+        stop: Event signalling shutdown.
+        interval: Seconds between cleanup runs.
+    """
+    while not stop.is_set():
+        try:
+            await cleanup_expired_uploads()
+        except Exception:
+            logger.exception("upload cleanup failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+        except TimeoutError:
+            pass
+
+
 async def run() -> None:
     """Start the worker: connect, join the consumer group and consume until SIGTERM/SIGINT.
 
@@ -257,7 +278,11 @@ async def run() -> None:
 
     await asyncio.to_thread(READY_FILE.touch)
     logger.info("worker started consumer=%s", name)
+    cleaner = asyncio.create_task(
+        cleanup_loop(consumer.stop, max(1, settings.UPLOAD_CLEANUP_INTERVAL_SECONDS))
+    )
     await consumer.run()
+    await cleaner
     await asyncio.to_thread(READY_FILE.unlink, missing_ok=True)
     logger.info("worker shutting down")
     await close_redis()

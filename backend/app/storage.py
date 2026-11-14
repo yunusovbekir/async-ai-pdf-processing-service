@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -93,3 +94,45 @@ async def delete_files(paths: list[Path]) -> None:
             path.unlink(missing_ok=True)
 
     await asyncio.to_thread(_delete)
+
+
+async def cleanup_expired_uploads(max_age_seconds: int | None = None) -> int:
+    """Delete stored PDFs whose last modification is older than the retention period.
+
+    Safe to run concurrently from several workers: a file removed by another process
+    in the meantime is ignored. A missing upload directory is not an error.
+
+    Args:
+        max_age_seconds: Retention in seconds; defaults to UPLOAD_TTL_SECONDS.
+
+    Returns:
+        Number of files deleted by this call.
+    """
+    settings = get_settings()
+    max_age = settings.UPLOAD_TTL_SECONDS if max_age_seconds is None else max_age_seconds
+    directory = Path(settings.UPLOAD_DIR)
+
+    def _cleanup() -> int:
+        cutoff = time.time() - max_age
+        deleted = 0
+        try:
+            entries = list(directory.glob("*.pdf"))
+        except OSError:
+            logger.exception("upload cleanup cannot list directory=%s", directory)
+            return 0
+        for path in entries:
+            try:
+                if path.stat().st_mtime >= cutoff:
+                    continue
+                path.unlink()
+                deleted += 1
+            except FileNotFoundError:
+                continue
+            except OSError:
+                logger.exception("upload cleanup failed path=%s", path)
+        return deleted
+
+    deleted = await asyncio.to_thread(_cleanup)
+    if deleted:
+        logger.info("upload cleanup deleted=%d max_age_seconds=%d", deleted, max_age)
+    return deleted
