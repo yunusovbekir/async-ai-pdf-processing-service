@@ -35,6 +35,18 @@ async def summarize(client: redis.Redis, document_id: str) -> None:
 
 
 async def _process(client: redis.Redis, document_id: str) -> None:
+    """Parse a document, store its pages and run the summary step.
+
+    Moves the status parsing -> summarizing -> completed. Replaces any previously stored
+    pages and sets an error note when no page has text.
+
+    Args:
+        client: Redis client.
+        document_id: Document to process.
+
+    Raises:
+        ParserError: Permanent parsing failure.
+    """
     doc = await client.hgetall(doc_key(document_id))
     parser = get_parser(ParserType(doc["parser"]))
     await update_status(client, document_id, DocumentStatus.parsing)
@@ -88,6 +100,14 @@ async def process_message(client: redis.Redis, entry_id: str, fields: dict[str, 
 async def _handle_transient(
     client: redis.Redis, document_id: str, attempt: int, exc: Exception
 ) -> None:
+    """Retry a transiently failed job, or dead-letter it once attempts are exhausted.
+
+    Args:
+        client: Redis client.
+        document_id: Document that failed.
+        attempt: Attempt number that just failed.
+        exc: The failure cause.
+    """
     if attempt < get_settings().MAX_ATTEMPTS:
         await update_status(client, document_id, DocumentStatus.queued)
         await enqueue(client, document_id, attempt + 1)
@@ -112,6 +132,14 @@ class Consumer:
         self._entry_ids: set[str] = set()
 
     def _spawn(self, entry_id: str, fields: dict[str, str]) -> None:
+        """Process an entry in a background task, bounded by the semaphore.
+
+        Entries already in flight in this consumer are ignored (e.g. re-claimed while running).
+
+        Args:
+            entry_id: Stream entry id.
+            fields: Entry fields.
+        """
         if entry_id in self._entry_ids:
             return
         self._entry_ids.add(entry_id)
@@ -171,6 +199,7 @@ class Consumer:
                     break
 
     async def run(self) -> None:
+        """Run the read and claim loops until stop is set, then drain in-flight jobs."""
         claimer = asyncio.create_task(self.claim_loop())
         try:
             await self.read_loop()
@@ -183,6 +212,10 @@ class Consumer:
 
 
 async def run() -> None:
+    """Start the worker: connect, join the consumer group and consume until SIGTERM/SIGINT.
+
+    Maintains the readiness file while running and closes Redis on exit.
+    """
     settings = get_settings()
     setup_logging(settings.LOG_LEVEL)
     client = get_redis()
