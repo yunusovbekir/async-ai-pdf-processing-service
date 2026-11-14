@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     GEMINI_MAX_CONCURRENCY: int = 2
+    GEMINI_TIMEOUT_SECONDS: int = 60
+    GEMINI_MAX_RETRIES: int = 4
+    SUMMARY_MAX_INPUT_CHARS: int = 100_000
     WORKER_CONCURRENCY: int = 4
     MAX_ATTEMPTS: int = 3
     CLAIM_IDLE_MS: int = 60_000

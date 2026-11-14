@@ -12,7 +12,7 @@ Run with `python -m app.worker.main` (compose service `worker`).
 1. Unknown document -> dropped; `completed` document -> skipped (idempotency).
 2. `attempts` = job attempt; status `parsing`; parse via `get_parser(doc.parser)` from `UPLOAD_DIR/{id}.pdf`.
 3. Replace `doc:{id}:pages`, set `page_count` (and the "no text layer" note in `error` if all pages are empty).
-4. Status `summarizing`; summary step (currently `summary_status=skipped`, hook for the Gemini summarizer).
+4. Status `summarizing`; summary step ([summarization](summarization.md)): `summary_status=completed` + `summary`; `failed` + `error` on failure (document still completes); `skipped` when there is no text.
 5. Status `completed`; `XACK`.
 Every status change is published on `batch:{id}:events`.
 
