@@ -213,7 +213,7 @@ uv run pytest
 
 ## Packaging
 
-`scripts/package.sh` builds `submission.zip` (git-ignored) with `git archive --format=zip -o submission.zip HEAD`. It contains only committed files, so `.env`, `.venv`, `node_modules` and caches are never included; commit your changes first.
+`scripts/package.sh` builds `submission.zip` (git-ignored) from the committed files (`git archive`), so `.env`, `.venv`, `node_modules` and caches are never included; commit your changes first. It also leaves out `tasks.md`, `system-prompt.md`, `scripts/package.sh` itself, and all dotfiles/dot-directories except `.env.example`.
 
 ## Trade-offs
 
