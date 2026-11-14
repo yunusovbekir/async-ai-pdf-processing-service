@@ -20,6 +20,8 @@ Services: `api` (port 8000), `worker`, `redis`.
 
 The worker is not implemented yet: jobs stay in the stream.
 
+Details: [POST /documents](docs/api/post-documents.md), [GET /documents/{id}](docs/api/get-document.md), [GET /batches/{id}](docs/api/get-batch.md); features: [storage](docs/features/storage.md), [queue](docs/features/queue.md), [repository](docs/features/repository.md).
+
 ## Tests
 
 ```bash
