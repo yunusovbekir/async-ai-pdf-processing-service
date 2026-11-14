@@ -53,7 +53,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>PDF processing</h1>
+        <h1>PDF Processing</h1>
       </header>
       <main className="app-main">
         {parsersError && <p className="error">{parsersError}</p>}
