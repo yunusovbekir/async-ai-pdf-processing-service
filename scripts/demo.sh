@@ -15,10 +15,10 @@ upload() { # <pdf> <parser> -> batch id
 }
 
 PYPDF_BATCH="$(upload "$SAMPLES/sample-text.pdf" pypdf)"
-GEMINI_BATCH="$(upload "$SAMPLES/sample-layout.pdf" llm)"
+LLM_BATCH="$(upload "$SAMPLES/sample-layout.pdf" llm)"
 
 deadline=$((SECONDS + TIMEOUT))
-for entry in "pypdf:$PYPDF_BATCH" "llm:$GEMINI_BATCH"; do
+for entry in "pypdf:$PYPDF_BATCH" "llm:$LLM_BATCH"; do
   parser="${entry%%:*}"
   batch_id="${entry#*:}"
   echo "== parser=$parser batch=$batch_id"
