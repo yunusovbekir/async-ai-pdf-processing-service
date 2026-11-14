@@ -64,7 +64,7 @@ Upload errors: `400` (non-PDF, empty, too many files; body `{"detail": [{"filena
 
 ## Frontend
 
-React + TypeScript (Vite) app in `frontend/`, served by nginx at http://localhost:3000 with `docker compose up --build`. nginx serves the SPA (history fallback) and proxies `/api/` to the `api` service (buffering off and a 1h read timeout for SSE; `client_max_body_size 210m` = `MAX_FILES_PER_UPLOAD` x `MAX_FILE_SIZE_MB` of the defaults, raise it if you raise the limits). The current page is a shell showing the API status (`GET /health`) and the parser list (`GET /parsers`).
+React + TypeScript (Vite) app in `frontend/`, served by nginx at http://localhost:3000 with `docker compose up --build`. nginx serves the SPA (history fallback) and proxies `/api/` to the `api` service (buffering off and a 1h read timeout for SSE; `client_max_body_size 210m` = `MAX_FILES_PER_UPLOAD` x `MAX_FILE_SIZE_MB` of the defaults, raise it if you raise the limits). The page shows the API status (`GET /health`) and an upload panel: drag & drop or "Choose files" (PDF only, keyboard accessible), a selected-files list (exact duplicates by name + size + lastModified are ignored), and a parser select filled from `GET /parsers` (parsers listed in the optional `unavailable_parsers` field are disabled with "API key not configured"; the first available one is the default). Files are validated client-side against the `/parsers` limits (not a PDF, empty, larger than `max_file_size_mb`, more than `max_files_per_upload`); Upload stays disabled while errors exist. Backend errors (400/413/422) are shown, per file when the message names one. On success the selection is cleared, the batch id is put in the URL (`?batch=<id>`) and shown with the document list; "New upload" returns to the form. Results display comes later.
 
 Local development (API on :8000, e.g. via compose); Vite proxies `/api` to `http://localhost:8000`:
 
@@ -225,6 +225,7 @@ uv run pytest
 
 ## Assumptions
 
+- `GET /parsers` does not yet report parser availability; the frontend supports an optional `unavailable_parsers` field and treats all listed parsers as available otherwise.
 - No authentication: anyone who can reach the API can upload and read. Document and batch ids are random UUIDs (uuid4 hex) and act as unguessable capability tokens.
 - The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `llm` (alias `gemini`) exist.
 - SSE streams are capped at `SSE_MAX_DURATION_SECONDS`; clients are expected to reconnect (the snapshot makes this safe).
