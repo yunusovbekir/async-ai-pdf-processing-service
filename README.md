@@ -211,10 +211,6 @@ uv run pytest
 
 `tests/test_concurrency.py` fires 20 concurrent uploads and verifies all are accepted and processed (fakeredis, mocked LLM). Provider tests (`tests/test_llm.py`) use mocked SDK clients; no network.
 
-## Packaging
-
-`scripts/package.sh` builds `submission.zip` (git-ignored) from the committed files (`git archive`), so `.env`, `.venv`, `node_modules` and caches are never included; commit your changes first. It also leaves out `tasks.md`, `system-prompt.md`, `scripts/package.sh` itself, and all dotfiles/dot-directories except `.env.example`.
-
 ## Trade-offs
 
 - Redis Streams as queue/store keeps the stack small (one dependency) at the cost of Redis memory limits and TTL-based retention (no durable history).
