@@ -191,9 +191,14 @@ class Consumer:
             if free <= 0:
                 await asyncio.wait(self._tasks, return_when=asyncio.FIRST_COMPLETED)
                 continue
-            response = await self.client.xreadgroup(
-                GROUP, self.name, {STREAM: ">"}, count=free, block=BLOCK_MS
-            )
+            try:
+                response = await self.client.xreadgroup(
+                    GROUP, self.name, {STREAM: ">"}, count=free, block=BLOCK_MS
+                )
+            except (redis.ConnectionError, redis.TimeoutError):
+                logger.warning("redis read failed, retrying", exc_info=True)
+                await asyncio.sleep(1)
+                continue
             if not response:
                 await asyncio.sleep(0)  # fakeredis does not honor BLOCK; avoid starving the loop
             for _, entries in response or []:

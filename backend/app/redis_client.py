@@ -11,7 +11,14 @@ def get_redis() -> redis.Redis:
     """Return the shared Redis client, creating it on first use."""
     global _client
     if _client is None:
-        _client = redis.from_url(get_settings().REDIS_URL, decode_responses=True)
+        # Must exceed the worker's XREADGROUP BLOCK (5s); redis-py 8 defaults to a 5s read timeout.
+        _client = redis.from_url(
+            get_settings().REDIS_URL,
+            decode_responses=True,
+            socket_timeout=30,
+            socket_connect_timeout=5,
+            health_check_interval=15,
+        )
     return _client
 
 

@@ -1,6 +1,5 @@
 x-backend: &backend
   build: ./backend
-  image: pdf-service-backend
   env_file: .env
   environment:
     REDIS_URL: redis://redis:6379/0
@@ -26,7 +25,7 @@ services:
   api:
     <<: *backend
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
@@ -46,7 +45,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       api:
         condition: service_healthy
