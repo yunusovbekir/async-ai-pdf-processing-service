@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.162.7",
     "google-genai>=3.3.0",
+    "openai>=3.51.0",
     "pydantic-settings>=2.16.3",
     "pypdf>=7.1.0",
     "python-multipart>=0.0.33",

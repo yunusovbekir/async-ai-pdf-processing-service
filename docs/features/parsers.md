@@ -11,14 +11,14 @@ pypdf behavior
 | Encrypted PDF                           | Tries the empty password; otherwise `ParserError("encrypted PDF not supported")` |
 | Corrupted/unreadable PDF                | `ParserError("could not read PDF: ...")`                      |
 | Zero pages                              | `ParserError("PDF has no pages")`                             |
-| No text on any page (scanned/blank)     | Pages kept with empty content; the worker completes the document with `error` = "no text layer found; try the gemini parser" |
+| No text on any page (scanned/blank)     | Pages kept with empty content; the worker completes the document with `error` = "no text layer found; try the llm parser" |
 
-## gemini parser
+## llm parser (alias `gemini`; uses the configured LLM provider)
 
-`gemini_parser.py`: validates the PDF via the shared `open_pdf` helper (in `base.py`, also used by pypdf), splits it into single-page PDFs with pypdf in a thread, and sends each page as `Part.from_bytes(mime_type="application/pdf")` plus a prompt asking for GitHub-flavored markdown (headings/lists/tables kept, images and charts described briefly in italics, markdown only). Pages run concurrently via `gemini_client.generate` (shared semaphore and retries); results keep page order.
+`llm_parser.py` (`LlmParser`; selected by `parser=llm` or the legacy `parser=gemini`): validates the PDF via the shared `open_pdf` helper (in `base.py`, also used by pypdf), splits it into single-page PDFs with pypdf in a thread, and sends each page as a PDF through `llm.generate_from_pdf` (provider-specific encoding: Gemini inline part, OpenAI `input_file`) plus a prompt asking for GitHub-flavored markdown (headings/lists/tables kept, images and charts described briefly in italics, markdown only). Pages run concurrently through the shared semaphore and retries; results keep page order.
 
 | Situation                     | Result                                                                    |
 |-------------------------------|---------------------------------------------------------------------------|
-| `GEMINI_API_KEY` missing      | `ParserError("gemini parser unavailable: GEMINI_API_KEY is not set")`     |
+| API key of the configured provider missing | `ParserError("llm parser unavailable: GEMINI_API_KEY is not set")` (or `OPENAI_API_KEY`) |
 | Encrypted/corrupted/empty PDF | Same `ParserError`s as pypdf, no API calls                                |
 | A page fails after retries    | Exception propagates: transient failure of the whole document (worker retries, then dead-letters) |

@@ -1,6 +1,6 @@
 # Async PDF processing service
 
-Upload one or more PDFs, choose a parser (`pypdf` or `gemini`), and get per-page text/markdown plus a Gemini summary of each file. The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai.
+Upload one or more PDFs, choose a parser (`pypdf` or `llm`; `gemini` is a legacy alias of `llm`), and get per-page text/markdown plus an LLM summary of each file (Gemini or OpenAI, switchable via env). The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai / openai.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ flowchart LR
     A -->|XADD| S[[Redis stream docs:jobs]]
     S -->|XREADGROUP| W[Workers x N]
     W -->|read PDF| V
-    W -->|parse + summarize| G[Gemini]
+    W -->|parse + summarize| G[LLM provider]
     W -->|status, pages, summary| R[(Redis hashes/lists)]
     W -.->|publish events| P[batch:id:events]
     C -->|GET /batches/id, /documents/id| A
@@ -23,7 +23,7 @@ Status changes are published to the `batch:{id}:events` Pub/Sub channel; an SSE 
 ## Run
 
 ```bash
-cp .env.example .env   # set GEMINI_API_KEY when needed
+cp .env.example .env   # set the API key of your LLM provider
 docker compose up --build
 curl localhost:8000/health
 scripts/demo.sh        # end-to-end demo (needs curl + jq)
@@ -33,11 +33,11 @@ Services: `api` (port 8000), `worker`, `redis`.
 
 ### Demo
 
-`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `gemini`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. Without `GEMINI_API_KEY` the documents still complete, with `summary_status=failed`, while the `gemini` parser fails the document with a clear error.
+`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `llm`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. Without the selected provider's API key the documents still complete, with `summary_status=failed`, while the `llm` parser fails the document with a clear error.
 
 ### Scaling workers
 
-Workers are stateless consumers in group `workers`; run more with `docker compose up --build --scale worker=3`. Throughput is `workers x WORKER_CONCURRENCY` jobs; Gemini load is capped per process by `GEMINI_MAX_CONCURRENCY`, so total Gemini concurrency grows with the number of workers. The API can be scaled likewise behind a load balancer as long as all replicas share Redis and the uploads volume.
+Workers are stateless consumers in group `workers`; run more with `docker compose up --build --scale worker=3`. Throughput is `workers x WORKER_CONCURRENCY` jobs; LLM load is capped per process by `LLM_MAX_CONCURRENCY`, so total LLM concurrency grows with the number of workers. The API can be scaled likewise behind a load balancer as long as all replicas share Redis and the uploads volume.
 
 ## API
 
@@ -63,15 +63,15 @@ Upload errors: `400` (non-PDF, empty, too many files; body `{"detail": [{"filena
 | Parser | How it works | Use when |
 |--------|--------------|----------|
 | `pypdf` (default) | Extracts the text layer per page, locally and fast | Digital PDFs with selectable text |
-| `gemini` | Splits the PDF into single pages and asks Gemini to convert each to markdown (tables, lists, image/chart descriptions); pages run concurrently with retries, order preserved | Scanned PDFs, or layouts/tables/charts that need markdown. Needs `GEMINI_API_KEY`; slower and uses API quota |
+| `llm` (alias `gemini`) | Splits the PDF into single pages and asks the configured LLM (`LLM_PROVIDER`, Gemini by default; `gemini` is still accepted and behaves identically; the value is stored as submitted) to convert each to markdown (tables, lists, image/chart descriptions); pages run concurrently with retries, order preserved | Scanned PDFs, or layouts/tables/charts that need markdown. Needs the provider's API key; slower and uses API quota |
 
-Encrypted, corrupted and zero-page PDFs fail with a user-facing error (both parsers); a missing `GEMINI_API_KEY` fails `gemini` documents with a clear error. A page that keeps failing after retries is a transient failure of the whole document (worker retry policy applies). `pypdf` on a PDF without a text layer completes with the note "no text layer found; try the gemini parser". See [parsers](docs/features/parsers.md).
+Encrypted, corrupted and zero-page PDFs fail with a user-facing error (both parsers); a missing API key for the configured provider fails `llm`/`gemini` documents with a clear error. A page that keeps failing after retries is a transient failure of the whole document (worker retry policy applies). `pypdf` on a PDF without a text layer completes with the note "no text layer found; try the llm parser". See [parsers](docs/features/parsers.md).
 
 ## Worker
 
 `python -m app.worker.main` (compose service `worker`; scale with `docker compose up --scale worker=3`). Each worker is a consumer `hostname-pid` in group `workers`, processing up to `WORKER_CONCURRENCY` jobs concurrently.
 
-Pipeline: skip if `completed` -> `parsing` -> parse per page -> store pages + `page_count` -> `summarizing` -> summary step (Gemini, see [summarization](docs/features/summarization.md)) -> `completed` -> `XACK`.
+Pipeline: skip if `completed` -> `parsing` -> parse per page -> store pages + `page_count` -> `summarizing` -> summary step (LLM, see [summarization](docs/features/summarization.md)) -> `completed` -> `XACK`.
 
 - `ParserError` is permanent: document `failed`, job acked.
 - Other exceptions are transient: re-enqueued with `attempt+1` while `attempt < MAX_ATTEMPTS`; afterwards the document is `failed` and the job goes to `docs:jobs:dead`.
@@ -107,29 +107,61 @@ All via environment (see `.env.example`).
 | `UPLOAD_CLEANUP_INTERVAL_SECONDS` | `3600` | How often each worker deletes expired uploads |
 | `MAX_FILE_SIZE_MB` | `20` | Max size per file |
 | `MAX_FILES_PER_UPLOAD` | `10` | Max files per request |
-| `GEMINI_API_KEY` | empty | Gemini API key (required for summaries) |
-| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Gemini model |
-| `GEMINI_MAX_CONCURRENCY` | `2` | Max concurrent Gemini requests per process |
-| `GEMINI_TIMEOUT_SECONDS` | `60` | Per-request timeout |
-| `GEMINI_MAX_RETRIES` | `4` | Attempts per request on 429/5xx/timeouts (exponential backoff + jitter) |
-| `SUMMARY_MAX_INPUT_CHARS` | `100000` | Document text sent to Gemini is truncated to this length |
+| `LLM_PROVIDER` | `gemini` | `gemini` or `openai` |
+| `LLM_MODEL` | empty | Model name; empty = provider default (`gemini-3.1-flash-lite` / `gpt-5-mini`) |
+| `GEMINI_API_KEY` | empty | Gemini API key (needed when `LLM_PROVIDER=gemini`) |
+| `OPENAI_API_KEY` | empty | OpenAI API key (needed when `LLM_PROVIDER=openai`) |
+| `LLM_MAX_CONCURRENCY` | `2` | Max concurrent LLM requests per process (legacy name `GEMINI_MAX_CONCURRENCY` still accepted) |
+| `LLM_TIMEOUT_SECONDS` | `60` | Per-request timeout (legacy `GEMINI_TIMEOUT_SECONDS`) |
+| `LLM_MAX_RETRIES` | `4` | Attempts per request on 429/5xx/timeouts (exponential backoff + jitter; legacy `GEMINI_MAX_RETRIES`) |
+| `SUMMARY_MAX_INPUT_CHARS` | `100000` | Document text sent to the LLM is truncated to this length |
 | `WORKER_CONCURRENCY` | `4` | Concurrent jobs per worker |
 | `MAX_ATTEMPTS` | `3` | Attempts before dead-lettering |
 | `CLAIM_IDLE_MS` | `60000` | Idle time before a pending job is reclaimed |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
-## Gemini API key and summaries
+## Switching the LLM provider
+
+Only env vars change; no code edits. Restart api and worker after editing `.env`.
+
+```bash
+# Gemini (default)
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=...
+# LLM_MODEL=gemini-3.1-flash-lite   # optional
+
+# OpenAI
+LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+LLM_MODEL=gpt-5-mini                # optional
+```
+
+`LLM_MODEL` is any model name the provider accepts (empty = provider default). Summaries and the `llm` parser both use the configured provider, sharing one global concurrency limit and retry policy (`app/llm/client.py`). OpenAI receives each page as a base64 PDF `input_file` via the Responses API. The parser values `llm` and the legacy `gemini` are both accepted (same `LlmParser` in `app/parsers/llm_parser.py`), independent of the provider. A missing key (or unknown provider) fails `llm`-parser documents with a clear error and marks summaries `failed`.
+
+### Adding a provider
+
+1. Create `app/llm/<name>.py` with a class that has `name`, `default_model`, `__init__(settings, model)` (raise `LLMConfigError` if the key is missing) and async `generate(prompt)` / `generate_from_pdf(pdf_bytes, prompt)` (the `LLMProvider` protocol in `app/llm/base.py`). Map the SDK's 429/5xx/timeout errors to `RetryableLLMError`; let other errors propagate.
+2. Add its key setting to `app/config.py` and `.env.example`.
+3. Register the class in `PROVIDERS` in `app/llm/factory.py`.
+
+Retries and the concurrency semaphore are provider-agnostic and need no changes. LangChain was deliberately not used: only two operations are needed, and the adapter avoids a heavy dependency.
+
+## Getting API keys
+
+### Gemini
 
 1. Open [Google AI Studio](https://aistudio.google.com/apikey) and sign in with a Google account.
 2. Click **Create API key** (free tier, no billing needed) and copy it.
 3. Put it in `.env` as `GEMINI_API_KEY=...` and restart the worker.
 
-The free tier has low per-minute/per-day request limits; `429` responses are retried with backoff, and `GEMINI_MAX_CONCURRENCY` (default `2`) keeps load down. If limits persist, lower the concurrency or upload fewer files at once. Details: [summarization](docs/features/summarization.md).
+OpenAI: create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and set `OPENAI_API_KEY` with `LLM_PROVIDER=openai`.
+
+The free tier has low per-minute/per-day request limits; `429` responses are retried with backoff, and `LLM_MAX_CONCURRENCY` (default `2`) keeps load down. If limits persist, lower the concurrency or upload fewer files at once. Details: [summarization](docs/features/summarization.md).
 
 ## Retry and failure semantics
 
 - Delivery is at-least-once: a job is acked only after the document reaches a final state; processing is idempotent (completed documents are skipped).
-- Permanent failures (`ParserError`: encrypted, corrupted, zero pages, missing Gemini key for the `gemini` parser) mark the document `failed` immediately.
+- Permanent failures (`ParserError`: encrypted, corrupted, zero pages, missing provider API key for the `llm` parser) mark the document `failed` immediately.
 - Transient failures are re-enqueued with `attempt+1` up to `MAX_ATTEMPTS`; then the document is `failed` and the job is copied to `docs:jobs:dead`.
 - Crashed workers: pending jobs idle longer than `CLAIM_IDLE_MS` are reclaimed by another worker via `XAUTOCLAIM`.
 - Summary failures never fail a document (see Assumptions).
@@ -148,7 +180,7 @@ uv run ruff check .
 uv run pytest
 ```
 
-`tests/test_concurrency.py` fires 20 concurrent uploads and verifies all are accepted and processed (fakeredis, mocked Gemini).
+`tests/test_concurrency.py` fires 20 concurrent uploads and verifies all are accepted and processed (fakeredis, mocked LLM). Provider tests (`tests/test_llm.py`) use mocked SDK clients; no network.
 
 ## Packaging
 
@@ -161,12 +193,12 @@ uv run pytest
 - Polling is simple and stateless; Pub/Sub events are published but no SSE endpoint exists yet.
 - Summaries are sent as one truncated request (`SUMMARY_MAX_INPUT_CHARS`) rather than map-reduce: cheap, but long documents are partially summarized.
 - Upload retention is mtime-based and independent of Redis: a document still being retried after 7 days would find its file gone (permanent in practice since jobs also expire with the Redis TTL). Every worker runs the cleanup; deletions are idempotent, so no leader election is needed.
-- At-least-once delivery means a Gemini request can be repeated after a crash.
+- At-least-once delivery means an LLM request can be repeated after a crash.
 
 ## Future work
 
 - Authentication and multi-tenancy (per-user quotas and access control).
-- PII masking before sending text to Gemini.
+- PII masking before sending text to the LLM.
 - Virus scanning of uploads.
 - Object storage (S3/GCS) instead of the shared volume.
 - Metrics and tracing (Prometheus/OpenTelemetry), queue-depth autoscaling.
@@ -175,13 +207,13 @@ uv run pytest
 ## Assumptions
 
 - No authentication: anyone who can reach the API can upload and read. Document and batch ids are random UUIDs (uuid4 hex) and act as unguessable capability tokens.
-- The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `gemini` exist.
+- The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `llm` (alias `gemini`) exist.
 - SSE is not implemented; clients poll `GET /batches/{id}` / `GET /documents/{id}`.
 - `.env` is required by compose; `REDIS_URL` and `UPLOAD_DIR` are overridden in compose for container paths.
 - Upload validation errors use `413` if any file is oversized, otherwise `400`; too many files is `400`.
 - A password-protected PDF is only supported if it opens with an empty password.
 - A missing upload file is treated as a transient error (retried, then dead-lettered).
 - Empty `error`/`summary` are returned as `null`.
-- A summary failure (including a missing `GEMINI_API_KEY`) does not fail the document: pages are kept, `summary_status=failed`, `error` holds the reason, status is `completed`. Documents without text get `summary_status=skipped`.
+- A summary failure (including a missing API key) does not fail the document: pages are kept, `summary_status=failed`, `error` holds the reason, status is `completed`. Documents without text get `summary_status=skipped`.
 - Uploaded files are removed after `UPLOAD_TTL_SECONDS` (default equals `DATA_TTL_SECONDS`); keep the two in sync so a document never outlives its file or vice versa.
 - A missing document hash (expired TTL) makes the worker drop the job.

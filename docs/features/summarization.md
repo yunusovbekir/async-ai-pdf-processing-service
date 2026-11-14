@@ -1,9 +1,9 @@
 # Summarization
 
-After parsing, the worker summarizes the whole document with Gemini (`app/summarizer.py`, `app/gemini_client.py`).
+After parsing, the worker summarizes the whole document with the configured LLM provider (`app/summarizer.py`, `app/llm/`).
 
 - `summarize(pages)` joins pages as `[Page N]\n<content>`, truncates to `SUMMARY_MAX_INPUT_CHARS` and asks for a concise markdown summary (short overview + key points) in the document's language. Empty text returns `""` without an API call.
-- `gemini_client.generate(prompt)` uses one shared async client (`client.aio`), a global semaphore of `GEMINI_MAX_CONCURRENCY`, a request timeout (`GEMINI_TIMEOUT_SECONDS`) and tenacity retries (up to `GEMINI_MAX_RETRIES` attempts, exponential backoff + jitter) on 429, 5xx and timeouts only. A missing `GEMINI_API_KEY` raises `GeminiConfigError`.
+- `llm.generate(prompt)` / `llm.generate_from_pdf(pdf_bytes, prompt)` (`app/llm/client.py`) delegate to the provider chosen by `LLM_PROVIDER` (`gemini` or `openai`, see README "Switching the LLM provider"). They hold a global semaphore of `LLM_MAX_CONCURRENCY` per attempt and use tenacity retries (up to `LLM_MAX_RETRIES` attempts, exponential backoff + jitter) on `RetryableLLMError` only: each provider maps its own 429, 5xx and timeouts to it. The request timeout is `LLM_TIMEOUT_SECONDS`. A missing API key for the selected provider (or an unknown provider) raises `LLMConfigError`.
 
 ## Outcomes
 
