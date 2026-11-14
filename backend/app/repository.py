@@ -11,26 +11,32 @@ logger = logging.getLogger(__name__)
 
 
 def doc_key(document_id: str) -> str:
+    """Redis key of the document hash."""
     return f"doc:{document_id}"
 
 
 def pages_key(document_id: str) -> str:
+    """Redis key of the document pages list."""
     return f"doc:{document_id}:pages"
 
 
 def batch_key(batch_id: str) -> str:
+    """Redis key of the batch hash."""
     return f"batch:{batch_id}"
 
 
 def batch_docs_key(batch_id: str) -> str:
+    """Redis key of the batch document id list."""
     return f"batch:{batch_id}:docs"
 
 
 def events_channel(batch_id: str) -> str:
+    """Pub/Sub channel for batch status events."""
     return f"batch:{batch_id}:events"
 
 
 def _now() -> str:
+    """Current UTC time as an ISO 8601 string."""
     return datetime.now(UTC).isoformat()
 
 
@@ -71,6 +77,7 @@ async def create_batch(
 
 
 def _clean(raw: dict[str, str]) -> dict[str, object]:
+    """Convert a raw hash into typed values, mapping empty strings to None."""
     data: dict[str, object] = {k: (v if v != "" else None) for k, v in raw.items()}
     data["attempts"] = int(raw.get("attempts") or 0)
     if data.get("page_count") is not None:
@@ -81,6 +88,7 @@ def _clean(raw: dict[str, str]) -> dict[str, object]:
 async def get_document(
     client: redis.Redis, document_id: str, with_pages: bool = True
 ) -> dict[str, object] | None:
+    """Fetch a document (optionally with pages), or None if unknown."""
     raw = await client.hgetall(doc_key(document_id))
     if not raw:
         return None
@@ -92,6 +100,7 @@ async def get_document(
 
 
 async def get_batch(client: redis.Redis, batch_id: str) -> dict[str, object] | None:
+    """Fetch a batch with its documents (no pages), or None if unknown."""
     raw = await client.hgetall(batch_key(batch_id))
     if not raw:
         return None

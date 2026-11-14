@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Set up logging and the job stream on startup; close Redis on shutdown."""
     setup_logging(get_settings().LOG_LEVEL)
     await queue.ensure_group(get_redis())
     logger.info("api started")
@@ -30,6 +31,7 @@ app.include_router(documents_router)
 
 @app.get("/health")
 async def health() -> JSONResponse:
+    """Report API and Redis health."""
     try:
         await get_redis().ping()
     except Exception:

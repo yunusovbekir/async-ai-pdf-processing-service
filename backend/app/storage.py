@@ -20,6 +20,7 @@ class InvalidUploadError(Exception):
 
 
 def upload_path(document_id: str) -> Path:
+    """Return the on-disk path for a document id."""
     return Path(get_settings().UPLOAD_DIR) / f"{document_id}.pdf"
 
 
@@ -55,6 +56,8 @@ async def save_upload(file: UploadFile, document_id: str) -> Path:
 
 
 async def delete_files(paths: list[Path]) -> None:
+    """Delete the given files off the event loop, ignoring missing ones."""
+
     def _delete() -> None:
         for path in paths:
             path.unlink(missing_ok=True)

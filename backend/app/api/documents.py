@@ -32,6 +32,7 @@ async def upload_documents(
     files: Annotated[list[UploadFile], File()],
     parser: Annotated[ParserType, Form()] = ParserType.pypdf,
 ) -> UploadResponse | JSONResponse:
+    """Validate and store uploaded PDFs, create a batch and enqueue one job per file."""
     max_files = get_settings().MAX_FILES_PER_UPLOAD
     if len(files) > max_files:
         raise HTTPException(400, f"too many files: {len(files)} (max {max_files})")
@@ -78,6 +79,7 @@ async def upload_documents(
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse)
 async def get_document(document_id: str, client: RedisDep) -> dict[str, object]:
+    """Return a document with its pages, or 404."""
     document = await repository.get_document(client, document_id)
     if document is None:
         raise HTTPException(404, "document not found")
@@ -86,6 +88,7 @@ async def get_document(document_id: str, client: RedisDep) -> dict[str, object]:
 
 @router.get("/batches/{batch_id}", response_model=BatchResponse)
 async def get_batch(batch_id: str, client: RedisDep) -> dict[str, object]:
+    """Return a batch with its documents, or 404."""
     batch = await repository.get_batch(client, batch_id)
     if batch is None:
         raise HTTPException(404, "batch not found")
