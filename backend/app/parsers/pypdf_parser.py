@@ -1,3 +1,5 @@
+"""pypdf parser: local text-layer extraction."""
+
 import asyncio
 import logging
 from pathlib import Path
@@ -21,6 +23,8 @@ def _extract(path: Path) -> list[PageContent]:
 
 
 class PyPdfParser:
+    """Parser that extracts the text layer of each page with pypdf."""
+
     async def parse(self, path: Path) -> list[PageContent]:
         """Extract text per page with pypdf (off the event loop).
 

@@ -1,3 +1,5 @@
+"""Gemini parser: converts each PDF page to markdown."""
+
 import asyncio
 import io
 import logging
@@ -35,6 +37,8 @@ def _split(path: Path) -> list[bytes]:
 
 
 class GeminiParser:
+    """Parser that asks Gemini to convert every page to markdown."""
+
     async def parse(self, path: Path) -> list[PageContent]:
         """Convert each page to markdown with Gemini, preserving page order.
 

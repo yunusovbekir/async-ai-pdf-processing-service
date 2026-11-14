@@ -1,3 +1,5 @@
+"""Application settings loaded from environment variables."""
+
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -5,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Environment-driven configuration shared by the API and the worker."""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -31,4 +35,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return the cached application settings."""
     return Settings()

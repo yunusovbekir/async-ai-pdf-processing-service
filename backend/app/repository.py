@@ -1,3 +1,5 @@
+"""Redis persistence for batches and documents."""
+
 import json
 import logging
 from datetime import UTC, datetime

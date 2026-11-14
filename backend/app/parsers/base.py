@@ -1,3 +1,5 @@
+"""Parser protocol, shared types and the parser registry."""
+
 from pathlib import Path
 from typing import Protocol
 
@@ -11,6 +13,8 @@ NO_TEXT_NOTE = "no text layer found; try the gemini parser"
 
 
 class PageContent(BaseModel):
+    """Content of one page (1-based page number)."""
+
     page: int
     content: str
 
@@ -20,6 +24,8 @@ class ParserError(Exception):
 
 
 class Parser(Protocol):
+    """Interface implemented by every parser."""
+
     async def parse(self, path: Path) -> list[PageContent]:
         """Extract the content of every page, in order (1-based page numbers)."""
         ...
