@@ -162,3 +162,142 @@ button:disabled {
   justify-content: space-between;
   margin-top: var(--space);
 }
+
+.batch-head,
+.doc-row,
+.page-nav,
+.detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.batch-head,
+.detail-head {
+  justify-content: space-between;
+}
+
+.batch-head h2,
+.detail-head h4 {
+  margin: 0;
+}
+
+progress {
+  width: 100%;
+}
+
+.doc-list,
+.page-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: var(--space);
+}
+
+.doc-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+}
+
+.doc-name {
+  font-weight: 600;
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge-queued {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge-parsing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-summarizing {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.badge-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.conn-sse {
+  color: var(--color-ok);
+}
+
+.conn-polling {
+  color: #b45309;
+}
+
+.notice {
+  background: #fef3c7;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+
+.detail {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.5rem;
+}
+
+.page-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.page-btn.current {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.page-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.markdown {
+  overflow-x: auto;
+}
+
+.markdown table {
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--color-border);
+  padding: 0.25rem 0.5rem;
+}
+
+.markdown th {
+  background: var(--color-bg);
+}
