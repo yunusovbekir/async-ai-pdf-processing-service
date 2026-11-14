@@ -152,8 +152,8 @@ export default function UploadPanel({ parsers, onUploaded }: Props) {
       ))}
 
       <div className="upload-actions">
-        <label>
-          Parser{" "}
+        <label className="field">
+          Parser
           <select value={parser} disabled={uploading} onChange={(e) => setParser(e.target.value as ParserType)}>
             {parsers.parsers.map((p) => (
               <option key={p} value={p} disabled={unavailable.has(p)}>
