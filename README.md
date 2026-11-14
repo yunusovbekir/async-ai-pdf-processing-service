@@ -33,7 +33,12 @@ Upload errors: `400` (non-PDF, empty, too many files; body `{"detail": [{"filena
 
 ## Parsers
 
-`pypdf` (default) extracts text per page; `gemini` is accepted but not implemented yet (documents fail with a clear error). Encrypted, corrupted and zero-page PDFs fail with a user-facing error; PDFs without a text layer complete with the note "no text layer found; try the gemini parser". See [parsers](docs/features/parsers.md).
+| Parser | How it works | Use when |
+|--------|--------------|----------|
+| `pypdf` (default) | Extracts the text layer per page, locally and fast | Digital PDFs with selectable text |
+| `gemini` | Splits the PDF into single pages and asks Gemini to convert each to markdown (tables, lists, image/chart descriptions); pages run concurrently with retries, order preserved | Scanned PDFs, or layouts/tables/charts that need markdown. Needs `GEMINI_API_KEY`; slower and uses API quota |
+
+Encrypted, corrupted and zero-page PDFs fail with a user-facing error (both parsers); a missing `GEMINI_API_KEY` fails `gemini` documents with a clear error. A page that keeps failing after retries is a transient failure of the whole document (worker retry policy applies). `pypdf` on a PDF without a text layer completes with the note "no text layer found; try the gemini parser". See [parsers](docs/features/parsers.md).
 
 ## Worker
 
@@ -107,6 +112,5 @@ uv run pytest
 - A password-protected PDF is only supported if it opens with an empty password.
 - A missing upload file is treated as a transient error (retried, then dead-lettered).
 - Empty `error`/`summary` are returned as `null`.
-- The `gemini` parser is not implemented yet.
 - A summary failure (including a missing `GEMINI_API_KEY`) does not fail the document: pages are kept, `summary_status=failed`, `error` holds the reason, status is `completed`. Documents without text get `summary_status=skipped`.
 - A missing document hash (expired TTL) makes the worker drop the job.

@@ -71,14 +71,14 @@ def is_retryable(exc: BaseException) -> bool:
     return isinstance(exc, httpx.TimeoutException | TimeoutError)
 
 
-async def generate(prompt: str) -> str:
+async def generate(prompt: str | types.ContentListUnion) -> str:
     """Generate text with the configured model.
 
     Holds the global concurrency semaphore per attempt and retries transient failures
     (429, 5xx, timeouts) with exponential backoff and jitter.
 
     Args:
-        prompt: Full prompt text.
+        prompt: Full prompt text, or a list of contents (e.g. text plus a PDF `Part`).
 
     Returns:
         The generated text (may be empty).
