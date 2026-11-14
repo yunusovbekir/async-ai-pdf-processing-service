@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import BatchView from "./components/BatchView";
 import UploadPanel from "./components/UploadPanel";
 import { getHealth, getParsers } from "./api";
 import type { ParsersResponse, UploadResponse } from "./types";
@@ -16,7 +17,6 @@ export default function App() {
   const [parsers, setParsers] = useState<ParsersResponse | null>(null);
   const [parsersError, setParsersError] = useState<string | null>(null);
   const [batchId, setBatchId] = useState<string | null>(readBatchParam);
-  const [upload, setUpload] = useState<UploadResponse | null>(null);
 
   useEffect(() => {
     const onPopState = () => setBatchId(readBatchParam());
@@ -26,13 +26,11 @@ export default function App() {
 
   const handleUploaded = (result: UploadResponse) => {
     window.history.pushState(null, "", `?batch=${encodeURIComponent(result.batch_id)}`);
-    setUpload(result);
     setBatchId(result.batch_id);
   };
 
   const startNewUpload = () => {
     window.history.pushState(null, "", window.location.pathname);
-    setUpload(null);
     setBatchId(null);
   };
 
@@ -61,26 +59,7 @@ export default function App() {
         {parsersError && <p className="error">{parsersError}</p>}
         {!parsers && !parsersError && <p className="muted">Loading…</p>}
         {parsers && !batchId && <UploadPanel parsers={parsers} onUploaded={handleUploaded} />}
-        {batchId && (
-          <section className="card">
-            <h2>Upload accepted</h2>
-            <p>
-              Batch id: <code>{batchId}</code>
-            </p>
-            {upload && (
-              <ul>
-                {upload.documents.map((d) => (
-                  <li key={d.id}>
-                    {d.filename} <span className="muted">({d.id})</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button type="button" onClick={startNewUpload}>
-              New upload
-            </button>
-          </section>
-        )}
+        {batchId && <BatchView key={batchId} batchId={batchId} onNewUpload={startNewUpload} />}
       </main>
       <footer className="app-footer">
         <span className={`status status-${health.state}`} title={health.state === "down" ? health.message : undefined}>
