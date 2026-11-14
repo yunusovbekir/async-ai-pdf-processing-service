@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     WORKER_CONCURRENCY: int = 4
     MAX_ATTEMPTS: int = 3
     CLAIM_IDLE_MS: int = 60_000
+    SSE_HEARTBEAT_SECONDS: int = 15
+    SSE_MAX_DURATION_SECONDS: int = 600
     LOG_LEVEL: str = "INFO"
 
 

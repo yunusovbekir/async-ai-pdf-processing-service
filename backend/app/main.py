@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app import queue
 from app.api.documents import router as documents_router
+from app.api.events import router as events_router
 from app.config import get_settings
 from app.logging_config import setup_logging
 from app.redis_client import close_redis, get_redis
@@ -29,6 +30,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="PDF processing service", lifespan=lifespan)
 app.include_router(documents_router)
+app.include_router(events_router)
 
 
 @app.get("/health")

@@ -1,6 +1,6 @@
 # Async PDF processing service
 
-Upload one or more PDFs, choose a parser (`pypdf` or `llm`; `gemini` is a legacy alias of `llm`), and get per-page text/markdown plus an LLM summary of each file (Gemini or OpenAI, switchable via env). The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai / openai.
+Upload one or more PDFs, choose a parser (`pypdf` or `llm`; `gemini` is a legacy alias of `llm`), and get per-page text/markdown plus an LLM summary of each file (Gemini or OpenAI, switchable via env). The API (FastAPI) stores uploads on a shared volume and enqueues jobs on a Redis Stream; workers process them and write results to Redis, which clients fetch by polling or SSE. Stack: Python 3.12, FastAPI, Redis 7 Streams, pypdf, google-genai / openai.
 
 ## Architecture
 
@@ -14,11 +14,11 @@ flowchart LR
     W -->|parse + summarize| G[LLM provider]
     W -->|status, pages, summary| R[(Redis hashes/lists)]
     W -.->|publish events| P[batch:id:events]
-    C -->|GET /batches/id, /documents/id| A
+    C -->|GET /batches/id, /documents/id, /batches/id/events| A
     A -->|read| R
 ```
 
-Status changes are published to the `batch:{id}:events` Pub/Sub channel; an SSE endpoint on top of it is not implemented yet (clients poll).
+Status changes are published to the `batch:{id}:events` Pub/Sub channel; `GET /batches/{id}/events` relays them to clients as Server-Sent Events (one Pub/Sub connection per stream, snapshot first, `done` when every document is finished).
 
 ## Run
 
@@ -33,7 +33,7 @@ Services: `api` (port 8000), `worker`, `redis`.
 
 ### Demo
 
-`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `llm`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. Without the selected provider's API key the documents still complete, with `summary_status=failed`, while the `llm` parser fails the document with a clear error.
+`scripts/demo.sh [base_url]` uploads `samples/sample-text.pdf` with `pypdf` and `samples/sample-layout.pdf` with `llm`, polls `GET /batches/{id}` until every document is `completed`/`failed` (timeout `DEMO_TIMEOUT_SECONDS`, default 180) and prints status, errors and summaries. With `DEMO_WATCH_SSE=1` it first streams each batch's `/events` (printing the event names) before printing results. Without the selected provider's API key the documents still complete, with `summary_status=failed`, while the `llm` parser fails the document with a clear error.
 
 ### Scaling workers
 
@@ -47,6 +47,7 @@ Workers are stateless consumers in group `workers`; run more with `docker compos
 | `POST /documents` | Upload PDFs, returns `202` with `batch_id` and document ids | [doc](docs/api/post-documents.md) |
 | `GET /documents/{id}` | Status, error, summary, pages (`404` if unknown/expired) | [doc](docs/api/get-document.md) |
 | `GET /batches/{id}` | Batch with its documents, without pages (`404`) | [doc](docs/api/get-batch.md) |
+| `GET /batches/{id}/events` | SSE stream: `snapshot`, `document`, `done`, `: ping` (`404`) | [doc](docs/api/get-batch-events.md) |
 
 ```bash
 curl -F files=@a.pdf -F files=@b.pdf -F parser=pypdf localhost:8000/documents
@@ -118,6 +119,8 @@ All via environment (see `.env.example`).
 | `WORKER_CONCURRENCY` | `4` | Concurrent jobs per worker |
 | `MAX_ATTEMPTS` | `3` | Attempts before dead-lettering |
 | `CLAIM_IDLE_MS` | `60000` | Idle time before a pending job is reclaimed |
+| `SSE_HEARTBEAT_SECONDS` | `15` | Interval of `: ping` comments on the SSE stream |
+| `SSE_MAX_DURATION_SECONDS` | `600` | Max SSE stream lifetime; clients reconnect |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## Switching the LLM provider
@@ -190,7 +193,7 @@ uv run pytest
 
 - Redis Streams as queue/store keeps the stack small (one dependency) at the cost of Redis memory limits and TTL-based retention (no durable history).
 - Files on a shared volume avoid putting bytes in Redis but tie api and workers to shared storage.
-- Polling is simple and stateless; Pub/Sub events are published but no SSE endpoint exists yet.
+- SSE over Redis Pub/Sub avoids polling but costs one Redis connection per open stream and is not durable: events missed while disconnected are recovered via the snapshot on reconnect (no `Last-Event-ID`). Polling remains available.
 - Summaries are sent as one truncated request (`SUMMARY_MAX_INPUT_CHARS`) rather than map-reduce: cheap, but long documents are partially summarized.
 - Upload retention is mtime-based and independent of Redis: a document still being retried after 7 days would find its file gone (permanent in practice since jobs also expire with the Redis TTL). Every worker runs the cleanup; deletions are idempotent, so no leader election is needed.
 - At-least-once delivery means an LLM request can be repeated after a crash.
@@ -202,13 +205,13 @@ uv run pytest
 - Virus scanning of uploads.
 - Object storage (S3/GCS) instead of the shared volume.
 - Metrics and tracing (Prometheus/OpenTelemetry), queue-depth autoscaling.
-- SSE endpoint `GET /batches/{id}/events`, GPT-5 Mini OCR parser, web frontend.
+- GPT-5 Mini OCR parser, web frontend.
 
 ## Assumptions
 
 - No authentication: anyone who can reach the API can upload and read. Document and batch ids are random UUIDs (uuid4 hex) and act as unguessable capability tokens.
 - The GPT-5 Mini parser is not implemented (nice-to-have PR 8 not done); only `pypdf` and `llm` (alias `gemini`) exist.
-- SSE is not implemented; clients poll `GET /batches/{id}` / `GET /documents/{id}`.
+- SSE streams are capped at `SSE_MAX_DURATION_SECONDS`; clients are expected to reconnect (the snapshot makes this safe).
 - `.env` is required by compose; `REDIS_URL` and `UPLOAD_DIR` are overridden in compose for container paths.
 - Upload validation errors use `413` if any file is oversized, otherwise `400`; too many files is `400`.
 - A password-protected PDF is only supported if it opens with an empty password.
