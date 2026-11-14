@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Upload one sample PDF per parser, poll the batches until done and print summaries.
 # Usage: scripts/demo.sh [base_url]   (default http://localhost:8000)
+# Set DEMO_WATCH_SSE=1 to stream each batch from /batches/{id}/events instead of polling.
 set -euo pipefail
 
 BASE_URL="${1:-http://localhost:8000}"
@@ -22,6 +23,12 @@ for entry in "pypdf:$PYPDF_BATCH" "llm:$LLM_BATCH"; do
   parser="${entry%%:*}"
   batch_id="${entry#*:}"
   echo "== parser=$parser batch=$batch_id"
+  if [ "${DEMO_WATCH_SSE:-0}" = "1" ]; then
+    curl -fsSN --max-time "$TIMEOUT" "$BASE_URL/batches/$batch_id/events" | while IFS= read -r line; do
+      case "$line" in event:*) echo "  $line" ;; esac
+      [ "$line" = "event: done" ] && break
+    done || true
+  fi
   while :; do
     batch="$(curl -fsS "$BASE_URL/batches/$batch_id")"
     pending="$(jq '[.documents[] | select(.status != "completed" and .status != "failed")] | length' <<<"$batch")"
